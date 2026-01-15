@@ -1,0 +1,256 @@
+---
+title: Config File Reference
+description: Complete reference for devmux.config.json options.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## File Location
+
+devmux looks for configuration in this order:
+
+1. Path specified by `DEVMUX_CONFIG` environment variable
+2. `devmux.config.local.json` in current directory
+3. `devmux.config.json` in current directory
+4. Walk up parent directories looking for either file
+
+## Schema
+
+```json
+{
+  "$schema": "https://devmux-landing.pages.dev/schema.json",
+  "project": "string (required)",
+  "services": {
+    "<name>": {
+      "command": "string (required)",
+      "cwd": "string (optional)",
+      "port": "number (optional)",
+      "healthCheck": {
+        "type": "port | http (optional)",
+        "path": "string (optional)",
+        "timeout": "number (optional)"
+      }
+    }
+  }
+}
+```
+
+## Top-Level Fields
+
+### `project`
+
+**Required**. The project identifier used in tmux session naming.
+
+```json
+{
+  "project": "myapp"
+}
+```
+
+Sessions are named `omo-{project}-{service}`, so this creates sessions like:
+- `omo-myapp-api`
+- `omo-myapp-web`
+
+<Aside type="tip">
+Keep this short and unique. It appears in `tmux list-sessions` output.
+</Aside>
+
+### `services`
+
+**Required**. A map of service names to their configurations.
+
+```json
+{
+  "services": {
+    "api": { ... },
+    "web": { ... }
+  }
+}
+```
+
+Service names should be:
+- Lowercase
+- No spaces (use hyphens if needed)
+- Descriptive but short
+
+## Service Fields
+
+### `command`
+
+**Required**. The shell command to start the service.
+
+```json
+{
+  "command": "pnpm dev"
+}
+```
+
+Complex commands with environment variables:
+
+```json
+{
+  "command": "NODE_ENV=development pnpm start"
+}
+```
+
+### `cwd`
+
+Working directory for the command. Relative paths are resolved from the config file location.
+
+```json
+{
+  "cwd": "./apps/api"
+}
+```
+
+If omitted, defaults to the directory containing `devmux.config.json`.
+
+### `port`
+
+The port number the service listens on.
+
+```json
+{
+  "port": 8787
+}
+```
+
+When specified:
+- `devmux ensure` waits for this port to accept connections
+- `devmux status` shows the port
+- Health checks verify the port is listening
+
+### `healthCheck`
+
+Custom health check configuration.
+
+```json
+{
+  "healthCheck": {
+    "type": "http",
+    "path": "/health",
+    "timeout": 60000
+  }
+}
+```
+
+#### `healthCheck.type`
+
+| Type | Behavior |
+|------|----------|
+| `port` (default) | Check if port accepts TCP connections |
+| `http` | Make HTTP GET request and expect 2xx response |
+
+#### `healthCheck.path`
+
+For `http` type only. The path to request.
+
+```json
+{
+  "healthCheck": {
+    "type": "http",
+    "path": "/api/health"
+  }
+}
+```
+
+#### `healthCheck.timeout`
+
+Maximum time to wait for health check in milliseconds. Default: 30000 (30 seconds).
+
+```json
+{
+  "healthCheck": {
+    "timeout": 60000
+  }
+}
+```
+
+## Complete Example
+
+```json
+{
+  "$schema": "https://devmux-landing.pages.dev/schema.json",
+  "project": "acme-store",
+  "services": {
+    "api": {
+      "command": "pnpm dev",
+      "cwd": "./apps/api",
+      "port": 8787,
+      "healthCheck": {
+        "type": "http",
+        "path": "/health",
+        "timeout": 45000
+      }
+    },
+    "web": {
+      "command": "pnpm dev",
+      "cwd": "./apps/web",
+      "port": 3000
+    },
+    "docs": {
+      "command": "pnpm dev",
+      "cwd": "./apps/docs",
+      "port": 3001
+    },
+    "worker": {
+      "command": "pnpm dev",
+      "cwd": "./apps/worker"
+    },
+    "db": {
+      "command": "docker compose up postgres redis",
+      "healthCheck": {
+        "type": "port",
+        "timeout": 60000
+      },
+      "port": 5432
+    }
+  }
+}
+```
+
+## Local Overrides
+
+Create `devmux.config.local.json` for machine-specific settings:
+
+```json
+{
+  "services": {
+    "api": {
+      "command": "DATABASE_URL=postgres://localhost/mydb pnpm dev"
+    }
+  }
+}
+```
+
+This is merged with the main config. Add `devmux.config.local.json` to `.gitignore`.
+
+## Validation
+
+devmux validates config on startup. Validation errors:
+
+| Error | Cause |
+|-------|-------|
+| `Missing required field: project` | No `project` key |
+| `Missing required field: services` | No `services` key |
+| `Service "api" missing required field: command` | Service without command |
+| `Invalid port for service "api": must be number` | Port is not a number |
+| `Directory not found for service "api"` | `cwd` path doesn't exist |
+
+## TypeScript Types
+
+If you're generating config programmatically:
+
+```typescript
+import type { DevmuxConfig } from '@chriscode/devmux';
+
+const config: DevmuxConfig = {
+  project: 'myapp',
+  services: {
+    api: {
+      command: 'pnpm dev',
+      port: 8787,
+    },
+  },
+};
+```

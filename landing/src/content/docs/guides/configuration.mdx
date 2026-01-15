@@ -1,0 +1,204 @@
+---
+title: Configuration
+description: Complete guide to configuring devmux for your project.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+devmux is configured via a `devmux.config.json` file in your project root.
+
+## Basic Structure
+
+```json
+{
+  "project": "myapp",
+  "services": {
+    "api": {
+      "command": "pnpm dev",
+      "cwd": "./api",
+      "port": 8787
+    },
+    "web": {
+      "command": "pnpm dev", 
+      "cwd": "./web",
+      "port": 3000
+    }
+  }
+}
+```
+
+## Configuration Options
+
+### `project` (required)
+
+The project name used in tmux session naming. Sessions are named `omo-{project}-{service}`.
+
+```json
+{
+  "project": "waypoint"
+}
+```
+
+This creates sessions like `omo-waypoint-api`, `omo-waypoint-web`.
+
+<Aside type="tip">
+Use a short, unique name. This helps identify your project's sessions when running `tmux list-sessions`.
+</Aside>
+
+### `services` (required)
+
+A map of service names to their configurations.
+
+```json
+{
+  "services": {
+    "api": { ... },
+    "web": { ... },
+    "worker": { ... }
+  }
+}
+```
+
+## Service Options
+
+### `command` (required)
+
+The command to run when starting the service.
+
+```json
+{
+  "command": "pnpm dev"
+}
+```
+
+For complex commands, you can use shell syntax:
+
+```json
+{
+  "command": "DATABASE_URL=postgres://localhost/dev pnpm dev"
+}
+```
+
+### `cwd` (optional)
+
+Working directory for the command, relative to the config file location.
+
+```json
+{
+  "cwd": "./packages/api"
+}
+```
+
+If not specified, defaults to the project root.
+
+### `port` (optional)
+
+The port the service listens on. Used for health checks.
+
+```json
+{
+  "port": 8787
+}
+```
+
+When specified, `devmux ensure` will wait for this port to be available before returning.
+
+### `healthCheck` (optional)
+
+Custom health check configuration.
+
+```json
+{
+  "healthCheck": {
+    "type": "http",
+    "path": "/health",
+    "timeout": 30000
+  }
+}
+```
+
+Options:
+- `type`: `"port"` (default) or `"http"`
+- `path`: HTTP path to check (for `http` type)
+- `timeout`: Maximum wait time in milliseconds (default: 30000)
+
+## Full Example
+
+Here's a complete configuration for a typical monorepo:
+
+```json
+{
+  "project": "acme",
+  "services": {
+    "api": {
+      "command": "pnpm dev",
+      "cwd": "./apps/api",
+      "port": 8787,
+      "healthCheck": {
+        "type": "http",
+        "path": "/health",
+        "timeout": 60000
+      }
+    },
+    "web": {
+      "command": "pnpm dev",
+      "cwd": "./apps/web",
+      "port": 3000
+    },
+    "docs": {
+      "command": "pnpm dev",
+      "cwd": "./apps/docs",
+      "port": 3001
+    },
+    "worker": {
+      "command": "pnpm dev",
+      "cwd": "./apps/worker"
+    }
+  }
+}
+```
+
+## Environment-Specific Configs
+
+You can create environment-specific configurations:
+
+- `devmux.config.json` - Default
+- `devmux.config.local.json` - Local overrides (add to .gitignore)
+
+The local config is merged on top of the default config.
+
+## Generating Config
+
+### From Turbo.json
+
+If you use Turborepo, generate config automatically:
+
+```bash
+devmux discover turbo
+```
+
+This scans your `turbo.json` for `dev` tasks and creates the config.
+
+### Interactive Init
+
+Create a basic config interactively:
+
+```bash
+devmux init
+```
+
+This prints a template you can customize.
+
+## Validation
+
+devmux validates your config on startup. Common errors:
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| `Missing project name` | No `project` field | Add `"project": "myapp"` |
+| `No services defined` | Empty `services` object | Add at least one service |
+| `Invalid port` | Port is not a number | Use a number like `8787` |
+
+<Aside type="caution">
+The `cwd` path must exist. devmux will error if the directory is not found.
+</Aside>

@@ -1,0 +1,173 @@
+---
+title: Getting Started
+description: Install devmux and manage your first service in under 5 minutes.
+---
+
+import { Steps, Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+
+Get up and running with devmux in just a few minutes.
+
+## Prerequisites
+
+- **Node.js 18+**
+- **tmux** installed on your system
+
+<Tabs>
+  <TabItem label="macOS">
+    ```bash
+    brew install tmux
+    ```
+  </TabItem>
+  <TabItem label="Linux">
+    ```bash
+    # Debian/Ubuntu
+    sudo apt install tmux
+    
+    # Fedora
+    sudo dnf install tmux
+    
+    # Arch
+    sudo pacman -S tmux
+    ```
+  </TabItem>
+  <TabItem label="Windows (WSL)">
+    ```bash
+    sudo apt install tmux
+    ```
+  </TabItem>
+</Tabs>
+
+## Installation
+
+<Tabs>
+  <TabItem label="pnpm">
+    ```bash
+    pnpm add -D @chriscode/devmux
+    ```
+  </TabItem>
+  <TabItem label="npm">
+    ```bash
+    npm install -D @chriscode/devmux
+    ```
+  </TabItem>
+  <TabItem label="yarn">
+    ```bash
+    yarn add -D @chriscode/devmux
+    ```
+  </TabItem>
+</Tabs>
+
+Or run directly with npx:
+
+```bash
+npx @chriscode/devmux status
+```
+
+## Setup
+
+<Steps>
+
+1. **Initialize configuration**
+
+   If you're using Turborepo, devmux can auto-discover your services:
+
+   ```bash
+   npx devmux discover turbo
+   ```
+
+   This creates a `devmux.config.json` based on your `turbo.json` tasks.
+
+   Alternatively, create the config manually:
+
+   ```bash
+   npx devmux init
+   ```
+
+2. **Configure your services**
+
+   Edit `devmux.config.json` in your project root:
+
+   ```json
+   {
+     "project": "myapp",
+     "services": {
+       "api": {
+         "command": "pnpm dev",
+         "cwd": "./api",
+         "port": 8787
+       },
+       "web": {
+         "command": "pnpm dev",
+         "cwd": "./web",
+         "port": 3000
+       }
+     }
+   }
+   ```
+
+3. **Start a service**
+
+   ```bash
+   npx devmux ensure api
+   ```
+
+   This:
+   - Creates a tmux session named `omo-myapp-api`
+   - Runs `pnpm dev` in the `./api` directory
+   - Waits for port 8787 to be ready
+
+4. **Check status**
+
+   ```bash
+   npx devmux status
+   ```
+
+   Output:
+   ```
+   Service    Status    Port    Session
+   api        running   8787    omo-myapp-api
+   web        stopped   3000    -
+   ```
+
+5. **View logs**
+
+   ```bash
+   npx devmux attach api
+   ```
+
+   Press `Ctrl+B` then `D` to detach without stopping the service.
+
+</Steps>
+
+## Add npm Scripts
+
+Add these to your `package.json` for convenience:
+
+```json
+{
+  "scripts": {
+    "svc:status": "devmux status",
+    "svc:ensure": "devmux ensure",
+    "svc:stop": "devmux stop",
+    "svc:attach": "devmux attach"
+  }
+}
+```
+
+Now you can run:
+
+```bash
+pnpm svc:ensure api
+pnpm svc:status
+```
+
+## Next Steps
+
+- Learn about [Configuration](/guides/configuration/) options
+- Set up [AI Agent Integration](/guides/ai-agents/) for Claude Code / OpenCode
+- Explore [Turbo.json Discovery](/guides/turbo/) for automatic setup
+- See the full [Command Reference](/reference/commands/)
+
+<Aside type="tip">
+The `ensure` command is idempotent. Run it as many times as you want - if the service is already running, it just reuses it.
+</Aside>

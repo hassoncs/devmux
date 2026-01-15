@@ -1,0 +1,152 @@
+---
+title: devmux
+description: tmux-based service management for monorepos. Shared awareness between humans and AI agents.
+template: splash
+hero:
+  title: Service management for the AI era
+  tagline: Humans and AI agents share the same tmux sessions. No port conflicts. No duplicate servers. Just works.
+  image:
+    html: |
+      <div class="animated-terminal" aria-label="devmux CLI demo terminal">
+        <div class="terminal-header">
+          <div class="terminal-controls">
+            <span class="control close"></span>
+            <span class="control minimize"></span>
+            <span class="control maximize"></span>
+          </div>
+          <span class="terminal-title">terminal</span>
+        </div>
+        <div class="terminal-body">
+          <span class="line"><span class="prompt"></span><span class="cmd">devmux ensure api</span></span>
+          <span class="line dim">Checking omo-myapp-api...</span>
+          <span class="line ok">&#10003; Already running on port 8787</span>
+          <span class="line">&nbsp;</span>
+          <span class="line"><span class="prompt"></span><span class="cmd">devmux status</span></span>
+          <span class="line dim">Service    Status    Port    Session</span>
+          <span class="line ok">api        running   8787    omo-myapp-api</span>
+          <span class="line ok">web        running   3000    omo-myapp-web</span>
+          <span class="line">&nbsp;</span>
+          <span class="line"><span class="prompt"></span><span class="typing"></span></span>
+        </div>
+      </div>
+  actions:
+    - text: Get Started
+      link: /getting-started/
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/hassoncs/devmux
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid, Code, Tabs, TabItem } from '@astrojs/starlight/components';
+
+## Install in Seconds
+
+<Tabs>
+  <TabItem label="pnpm">
+    <Code code="pnpm add -D @chriscode/devmux" lang="bash" />
+  </TabItem>
+  <TabItem label="npm">
+    <Code code="npm install -D @chriscode/devmux" lang="bash" />
+  </TabItem>
+  <TabItem label="npx">
+    <Code code="npx @chriscode/devmux status" lang="bash" />
+  </TabItem>
+</Tabs>
+
+## Why devmux?
+
+<CardGrid stagger>
+  <Card title="Shared Awareness" icon="approve-check">
+    Both humans and AI agents use the same tmux session naming convention (`omo-{project}-{service}`). One starts a server, the other reuses it.
+  </Card>
+  <Card title="Idempotent by Design" icon="rocket">
+    `devmux ensure` is safe to run multiple times. If the service is already running, it reuses it. No port conflicts. No duplicate processes.
+  </Card>
+  <Card title="Zero Config for Turbo" icon="document">
+    Auto-discovers services from your `turbo.json`. Just run `devmux discover turbo` and you're set.
+  </Card>
+  <Card title="Built for AI Agents" icon="seti:robot">
+    Includes AGENTS.md template with exact instructions for Claude Code, OpenCode, and other AI coding assistants.
+  </Card>
+</CardGrid>
+
+## The Problem
+
+When AI coding assistants work on your project, they often need to start dev servers:
+
+- **Port conflicts**: Agent tries to start API on :8787, but you're already running it
+- **Duplicate processes**: Agent starts its own server, now you have two
+- **No cleanup**: Agent's server keeps running after the session ends
+- **No visibility**: You can't see what the agent started, agent can't see what you started
+
+## The Solution
+
+devmux creates **shared awareness** through tmux session naming:
+
+```bash
+# Human starts the API
+devmux ensure api
+# -> Creates tmux session: omo-myproject-api
+
+# Later, AI agent needs the API
+devmux ensure api  
+# -> Sees omo-myproject-api already running
+# -> Reuses it (no restart!)
+
+# Check what's running
+devmux status
+# Service    Status    Port    Session
+# api        running   8787    omo-myproject-api
+```
+
+Both human and agent see the same services. Both can start, stop, or reuse them.
+
+## Quick Example
+
+```bash
+# Initialize config (auto-detects from turbo.json)
+devmux init
+
+# Start your API (idempotent - safe to run multiple times)
+devmux ensure api
+
+# Check status
+devmux status
+
+# View logs
+devmux attach api
+
+# Run a command with services, cleanup on exit
+devmux run --with api -- npm test
+
+# Stop when done
+devmux stop api
+```
+
+## For AI Agents
+
+Add this to your `AGENTS.md` file so AI assistants know how to use devmux:
+
+```markdown
+## Service Management
+
+Before starting dev servers, check if they're already running:
+
+\`\`\`bash
+devmux status
+\`\`\`
+
+To start a service (idempotent):
+
+\`\`\`bash
+devmux ensure api
+\`\`\`
+
+NEVER start servers with raw commands like `pnpm dev`. 
+Always use devmux to prevent port conflicts.
+```
+
+See the [AI Agent Integration](/guides/ai-agents/) guide for the full template.

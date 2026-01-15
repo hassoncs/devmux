@@ -2,7 +2,7 @@
   "name": "devmux-monorepo",
   "version": "0.0.0",
   "private": true,
-  "description": "devmux CLI and documentation monorepo",
+  "description": "devmux CLI and landing page monorepo",
   "scripts": {
     "build": "pnpm -r run build",
     "dev": "pnpm -r run dev",
@@ -11,7 +11,10 @@
     "cli:dev": "pnpm --filter @chriscode/devmux dev",
     "landing:dev": "pnpm --filter landing dev",
     "landing:build": "pnpm --filter landing build",
-    "landing:deploy": "pnpm --filter landing build && pnpm --filter landing deploy"
+    "landing:deploy": "pnpm --filter landing build && pnpm --filter landing deploy",
+    "changelog": "./scripts/changelog.sh",
+    "release": "./scripts/release.sh",
+    "release:dry-run": "./scripts/release.sh --dry-run"
   },
   "engines": {
     "node": ">=18"

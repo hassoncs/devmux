@@ -1,0 +1,165 @@
+---
+title: AI Agent Integration
+description: How to configure devmux for Claude Code, OpenCode, and other AI coding assistants.
+---
+
+import { Aside, Code } from '@astrojs/starlight/components';
+
+devmux was built specifically for human-AI collaboration. This guide shows how to set up your project so AI agents use devmux correctly.
+
+## The Problem
+
+When AI agents work on your codebase, they often need to run dev servers. Without coordination:
+
+1. **Port conflicts**: You're running the API, agent tries to start another
+2. **Duplicate processes**: Two servers running, wasting resources
+3. **No cleanup**: Agent's servers keep running after the session
+4. **Hidden state**: Neither side knows what the other started
+
+## The Solution
+
+devmux uses a shared tmux session naming convention:
+
+```
+omo-{project}-{service}
+```
+
+Both humans and agents use the same names. Whoever starts first "wins", and others reuse that session.
+
+## AGENTS.md Template
+
+Add this to your project's `AGENTS.md` file (or `CLAUDE.md` for Claude Code):
+
+```markdown
+## Service Management (CRITICAL for dev servers)
+
+This project uses `devmux` for tmux-based service management. 
+This creates shared awareness between human developers and AI agents.
+
+### Session Naming Convention
+
+| Service | tmux Session Name | Port |
+|---------|-------------------|------|
+| API     | `omo-myapp-api`   | 8787 |
+| Web     | `omo-myapp-web`   | 3000 |
+
+**CRITICAL**: Always use exactly these session names.
+
+### Before Starting Any Dev Server
+
+**ALWAYS check if services are already running before starting them.**
+
+\`\`\`bash
+devmux status
+\`\`\`
+
+### Starting Services (Idempotent)
+
+Use `devmux ensure <service>` - it's idempotent and handles all cases:
+- If service is already running -> reuses it (no restart)
+- If tmux session exists but service is dead -> restarts it
+- If nothing is running -> starts new tmux session
+
+\`\`\`bash
+# Start API (safe to run multiple times)
+devmux ensure api
+\`\`\`
+
+### If You Need to Start Services Manually via tmux
+
+When using `interactive_bash`, use **exactly** these commands:
+
+\`\`\`bash
+# API Server
+tmux new-session -d -s omo-myapp-api -c api "pnpm dev"
+\`\`\`
+
+**DO NOT** use different session names. The human's scripts look for these specific names.
+
+### Checking Service Logs
+
+\`\`\`bash
+devmux attach api
+\`\`\`
+
+### Stopping Services
+
+\`\`\`bash
+devmux stop api
+devmux stop all
+\`\`\`
+```
+
+## Why This Works
+
+AI agents like Claude Code read `AGENTS.md` at the start of each session. By documenting:
+
+1. **Exact session names** - Agent uses the same names as you
+2. **Port numbers** - Agent can check if services are running
+3. **Commands** - Agent knows how to start/stop correctly
+
+The agent will run `devmux status` before trying to start anything, and reuse existing services.
+
+## Example Workflow
+
+### Scenario 1: Human already running services
+
+```bash
+# Human started earlier
+$ devmux ensure api
+Created omo-myapp-api, running on port 8787
+
+# Later, AI agent needs the API
+$ devmux ensure api
+omo-myapp-api already running on port 8787 (reusing)
+```
+
+### Scenario 2: Agent starts first
+
+```bash
+# AI agent starts the API
+$ devmux ensure api
+Created omo-myapp-api, running on port 8787
+
+# Human opens terminal later
+$ devmux status
+Service    Status    Port    Session
+api        running   8787    omo-myapp-api
+```
+
+Human sees the agent's server and can attach to it, stop it, or just use it.
+
+## OpenCode Configuration
+
+For OpenCode users, the instructions go in `AGENTS.md` at your project root. OpenCode reads this file automatically.
+
+## Claude Code Configuration
+
+For Claude Code users, put the instructions in `CLAUDE.md`. Claude Code reads this at session start.
+
+## Tips for AI Agents
+
+<Aside type="tip">
+When writing AGENTS.md instructions, be explicit about:
+- **Session names**: List every service with its exact session name
+- **Port numbers**: Agents can verify if a port is in use
+- **Order of operations**: Check status BEFORE starting anything
+</Aside>
+
+## Programmatic Access
+
+AI agents with tool access can also use devmux programmatically:
+
+```typescript
+import { ensureService, getStatus } from '@chriscode/devmux';
+
+// Check if API is running
+const status = await getStatus('api');
+if (status.running) {
+  console.log(`API already running on port ${status.port}`);
+} else {
+  await ensureService('api');
+}
+```
+
+See the [Programmatic API](/reference/api/) for full documentation.

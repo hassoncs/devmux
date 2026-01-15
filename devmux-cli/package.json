@@ -16,7 +16,8 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "prepublishOnly": "pnpm build",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "test": "echo 'No tests yet' && exit 0"
   },
   "keywords": [
     "tmux",

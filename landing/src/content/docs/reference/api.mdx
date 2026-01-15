@@ -1,0 +1,317 @@
+---
+title: Programmatic API
+description: Use devmux from Node.js code for advanced integrations.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+devmux exports a programmatic API for use in scripts, tests, and custom tooling.
+
+## Installation
+
+```bash
+pnpm add @chriscode/devmux
+```
+
+## Quick Start
+
+```typescript
+import { ensureService, stopService, getStatus } from '@chriscode/devmux';
+
+// Start API if not running
+await ensureService('api');
+
+// Check status
+const status = await getStatus('api');
+console.log(`API running: ${status.running}, port: ${status.port}`);
+
+// Stop when done
+await stopService('api');
+```
+
+## API Reference
+
+### ensureService
+
+Start a service if not already running. Idempotent.
+
+```typescript
+function ensureService(
+  serviceName: string,
+  options?: EnsureOptions
+): Promise<EnsureResult>
+```
+
+#### Options
+
+```typescript
+interface EnsureOptions {
+  wait?: boolean;        // Wait for health check (default: true)
+  timeout?: number;      // Health check timeout in ms (default: 30000)
+  configPath?: string;   // Path to config file
+}
+```
+
+#### Result
+
+```typescript
+interface EnsureResult {
+  started: boolean;      // true if we started it, false if already running
+  sessionName: string;   // tmux session name
+  port?: number;         // Port if configured
+}
+```
+
+#### Example
+
+```typescript
+import { ensureService } from '@chriscode/devmux';
+
+const result = await ensureService('api', { timeout: 60000 });
+
+if (result.started) {
+  console.log(`Started ${result.sessionName}`);
+} else {
+  console.log(`Reusing ${result.sessionName}`);
+}
+```
+
+---
+
+### stopService
+
+Stop a running service.
+
+```typescript
+function stopService(serviceName: string): Promise<void>
+```
+
+#### Example
+
+```typescript
+import { stopService } from '@chriscode/devmux';
+
+await stopService('api');
+```
+
+---
+
+### stopAll
+
+Stop all configured services.
+
+```typescript
+function stopAll(): Promise<void>
+```
+
+#### Example
+
+```typescript
+import { stopAll } from '@chriscode/devmux';
+
+// In test teardown
+afterAll(async () => {
+  await stopAll();
+});
+```
+
+---
+
+### getStatus
+
+Get status of a specific service.
+
+```typescript
+function getStatus(serviceName: string): Promise<ServiceStatus>
+```
+
+#### Result
+
+```typescript
+interface ServiceStatus {
+  name: string;
+  running: boolean;
+  port?: number;
+  sessionName?: string;
+  pid?: number;
+}
+```
+
+#### Example
+
+```typescript
+import { getStatus } from '@chriscode/devmux';
+
+const status = await getStatus('api');
+
+if (status.running) {
+  console.log(`API running on port ${status.port}`);
+} else {
+  console.log('API not running');
+}
+```
+
+---
+
+### getAllStatus
+
+Get status of all configured services.
+
+```typescript
+function getAllStatus(): Promise<ServiceStatus[]>
+```
+
+#### Example
+
+```typescript
+import { getAllStatus } from '@chriscode/devmux';
+
+const statuses = await getAllStatus();
+
+for (const s of statuses) {
+  console.log(`${s.name}: ${s.running ? 'running' : 'stopped'}`);
+}
+```
+
+---
+
+### loadConfig
+
+Load and validate the configuration file.
+
+```typescript
+function loadConfig(configPath?: string): Promise<DevmuxConfig>
+```
+
+#### Example
+
+```typescript
+import { loadConfig } from '@chriscode/devmux';
+
+const config = await loadConfig();
+console.log(`Project: ${config.project}`);
+console.log(`Services: ${Object.keys(config.services).join(', ')}`);
+```
+
+---
+
+## Use Cases
+
+### Test Setup
+
+```typescript
+import { ensureService, stopService } from '@chriscode/devmux';
+import { beforeAll, afterAll, describe, it } from 'vitest';
+
+describe('API Integration Tests', () => {
+  beforeAll(async () => {
+    await ensureService('api');
+  });
+
+  afterAll(async () => {
+    // Only stop if we started it
+    await stopService('api');
+  });
+
+  it('should respond to health check', async () => {
+    const res = await fetch('http://localhost:8787/health');
+    expect(res.ok).toBe(true);
+  });
+});
+```
+
+### Custom Scripts
+
+```typescript
+// scripts/dev.ts
+import { ensureService, getAllStatus } from '@chriscode/devmux';
+
+async function startDev() {
+  console.log('Starting development services...');
+  
+  await ensureService('api');
+  await ensureService('web');
+  
+  const statuses = await getAllStatus();
+  
+  console.log('\nServices:');
+  for (const s of statuses) {
+    if (s.running) {
+      console.log(`  ${s.name}: http://localhost:${s.port}`);
+    }
+  }
+}
+
+startDev();
+```
+
+### CI/CD Pipeline
+
+```typescript
+// scripts/e2e.ts
+import { ensureService, stopAll } from '@chriscode/devmux';
+import { execSync } from 'child_process';
+
+async function runE2E() {
+  try {
+    await ensureService('api');
+    await ensureService('web');
+    
+    execSync('playwright test', { stdio: 'inherit' });
+  } finally {
+    await stopAll();
+  }
+}
+
+runE2E();
+```
+
+---
+
+## Error Handling
+
+All functions throw on errors. Wrap in try/catch:
+
+```typescript
+import { ensureService, DevmuxError } from '@chriscode/devmux';
+
+try {
+  await ensureService('api');
+} catch (error) {
+  if (error instanceof DevmuxError) {
+    if (error.code === 'CONFIG_NOT_FOUND') {
+      console.error('Missing devmux.config.json');
+    } else if (error.code === 'HEALTH_TIMEOUT') {
+      console.error('Service failed to start in time');
+    }
+  }
+  throw error;
+}
+```
+
+### Error Codes
+
+| Code | Description |
+|------|-------------|
+| `CONFIG_NOT_FOUND` | No config file found |
+| `CONFIG_INVALID` | Config file has errors |
+| `SERVICE_NOT_FOUND` | Service not in config |
+| `HEALTH_TIMEOUT` | Health check timed out |
+| `TMUX_ERROR` | tmux command failed |
+
+---
+
+## TypeScript Support
+
+Full TypeScript support with exported types:
+
+```typescript
+import type {
+  DevmuxConfig,
+  ServiceConfig,
+  ServiceStatus,
+  EnsureOptions,
+  EnsureResult,
+  DevmuxError,
+} from '@chriscode/devmux';
+```

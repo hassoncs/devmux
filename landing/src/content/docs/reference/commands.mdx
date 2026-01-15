@@ -1,0 +1,254 @@
+---
+title: Commands
+description: Complete reference for all devmux CLI commands.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## devmux ensure
+
+Start a service if not already running. Idempotent - safe to call multiple times.
+
+```bash
+devmux ensure <service>
+```
+
+### Behavior
+
+| Current State | Action |
+|--------------|--------|
+| Service not running | Start new tmux session |
+| tmux session exists, process dead | Restart the service |
+| Service running and healthy | Reuse (no-op) |
+
+### Options
+
+| Option | Description |
+|--------|-------------|
+| `--wait` | Wait for health check before returning (default: true) |
+| `--timeout <ms>` | Health check timeout (default: 30000) |
+
+### Examples
+
+```bash
+# Start API service
+devmux ensure api
+
+# Start with longer timeout
+devmux ensure api --timeout 60000
+
+# Start without waiting for health check
+devmux ensure api --no-wait
+```
+
+---
+
+## devmux status
+
+Show status of all configured services.
+
+```bash
+devmux status [options]
+```
+
+### Output
+
+```
+Service    Status    Port    Session
+api        running   8787    omo-myapp-api
+web        running   3000    omo-myapp-web
+worker     stopped   -       -
+```
+
+### Options
+
+| Option | Description |
+|--------|-------------|
+| `--json` | Output as JSON |
+| `--service <name>` | Show status for specific service only |
+
+### Examples
+
+```bash
+# Show all services
+devmux status
+
+# JSON output (for scripting)
+devmux status --json
+
+# Specific service
+devmux status --service api
+```
+
+---
+
+## devmux stop
+
+Stop one or all services.
+
+```bash
+devmux stop <service|all>
+```
+
+### Behavior
+
+- Sends SIGTERM to the process
+- Kills the tmux session
+- Waits for clean shutdown
+
+### Examples
+
+```bash
+# Stop API service
+devmux stop api
+
+# Stop all services
+devmux stop all
+```
+
+---
+
+## devmux attach
+
+Attach to a service's tmux session to view logs.
+
+```bash
+devmux attach <service>
+```
+
+### Usage
+
+After attaching:
+- View live logs
+- Interact with the process
+- Press `Ctrl+B` then `D` to detach (service keeps running)
+- Press `Ctrl+C` to stop the service and exit
+
+<Aside type="tip">
+Detaching (`Ctrl+B D`) leaves the service running. This is useful for checking logs without stopping the server.
+</Aside>
+
+---
+
+## devmux run
+
+Run a command with specified services, cleaning up on exit.
+
+```bash
+devmux run --with <service> [--with <service>...] -- <command>
+```
+
+### Behavior
+
+1. Ensures all specified services are running
+2. Runs your command
+3. When command exits, stops services that THIS run started
+4. Services that were already running are left alone
+
+### Options
+
+| Option | Description |
+|--------|-------------|
+| `--with <service>` | Service to ensure (can be repeated) |
+| `--cleanup` | Stop all services on exit, even pre-existing (default: false) |
+
+### Examples
+
+```bash
+# Run tests with API
+devmux run --with api -- npm test
+
+# Run with multiple services
+devmux run --with api --with web -- npm run e2e
+
+# Force cleanup of all services on exit
+devmux run --with api --cleanup -- npm test
+```
+
+---
+
+## devmux discover
+
+Auto-generate configuration from your project.
+
+```bash
+devmux discover <source>
+```
+
+### Sources
+
+| Source | Description |
+|--------|-------------|
+| `turbo` | Read from turbo.json |
+
+### Options
+
+| Option | Description |
+|--------|-------------|
+| `--dry-run` | Print config without writing |
+| `--force` | Overwrite existing config |
+| `--merge` | Merge with existing config |
+| `--filter <pattern>` | Only include matching packages |
+| `--task <name>` | Task name to look for (default: "dev") |
+
+### Examples
+
+```bash
+# Discover from turbo.json
+devmux discover turbo
+
+# Preview without writing
+devmux discover turbo --dry-run
+
+# Only apps packages
+devmux discover turbo --filter "apps/*"
+```
+
+---
+
+## devmux init
+
+Print a configuration template.
+
+```bash
+devmux init
+```
+
+### Output
+
+Prints a template `devmux.config.json` that you can customize:
+
+```json
+{
+  "project": "myapp",
+  "services": {
+    "api": {
+      "command": "pnpm dev",
+      "cwd": "./api",
+      "port": 8787
+    }
+  }
+}
+```
+
+---
+
+## Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| 1 | General error |
+| 2 | Config not found or invalid |
+| 3 | Service not found |
+| 4 | Health check timeout |
+
+---
+
+## Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `DEVMUX_CONFIG` | Path to config file (default: `./devmux.config.json`) |
+| `DEVMUX_TIMEOUT` | Default health check timeout in ms |
+| `DEVMUX_DEBUG` | Enable debug logging (`1` or `true`) |
