@@ -1,0 +1,61 @@
+{
+  "name": "@chriscode/devmux",
+  "version": "0.1.0",
+  "description": "tmux-based service management for monorepos with human-agent shared awareness",
+  "type": "module",
+  "bin": {
+    "devmux": "./bin/devmux.js"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "prepublishOnly": "pnpm build",
+    "type-check": "tsc --noEmit"
+  },
+  "keywords": [
+    "tmux",
+    "monorepo",
+    "dev",
+    "services",
+    "turbo",
+    "agent",
+    "opencode",
+    "claude",
+    "ai"
+  ],
+  "author": "Chris Hasson",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hassoncs/devmux.git",
+    "directory": "devmux-cli"
+  },
+  "bugs": {
+    "url": "https://github.com/hassoncs/devmux/issues"
+  },
+  "homepage": "https://github.com/hassoncs/devmux#readme",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "citty": "^0.1.6"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0"
+  },
+  "files": [
+    "dist",
+    "bin"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

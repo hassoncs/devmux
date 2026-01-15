@@ -1,0 +1,266 @@
+---
+const title = 'devmux - tmux-based service management for monorepos';
+const description = 'Shared awareness between human developers and AI agents. Both can see and reuse running services.';
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content={description} />
+    <title>{title}</title>
+    <style>
+      :root {
+        --bg: #0a0a0a;
+        --fg: #fafafa;
+        --accent: #22c55e;
+        --muted: #6b7280;
+        --code-bg: #1a1a1a;
+      }
+      
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--fg);
+        line-height: 1.6;
+      }
+      
+      .container {
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 2rem;
+      }
+      
+      header {
+        text-align: center;
+        padding: 4rem 0;
+      }
+      
+      h1 {
+        font-size: 3rem;
+        font-weight: 700;
+        margin-bottom: 1rem;
+      }
+      
+      .tagline {
+        font-size: 1.25rem;
+        color: var(--muted);
+        max-width: 600px;
+        margin: 0 auto 2rem;
+      }
+      
+      .install {
+        background: var(--code-bg);
+        padding: 1rem 2rem;
+        border-radius: 8px;
+        font-family: 'SF Mono', 'Fira Code', monospace;
+        display: inline-block;
+        margin-bottom: 2rem;
+      }
+      
+      .accent {
+        color: var(--accent);
+      }
+      
+      section {
+        margin: 4rem 0;
+      }
+      
+      h2 {
+        font-size: 1.5rem;
+        margin-bottom: 1.5rem;
+        color: var(--accent);
+      }
+      
+      .problem {
+        display: grid;
+        gap: 1rem;
+        margin-bottom: 2rem;
+      }
+      
+      .problem-box {
+        background: var(--code-bg);
+        padding: 1.5rem;
+        border-radius: 8px;
+        border-left: 3px solid #ef4444;
+      }
+      
+      .solution-box {
+        background: var(--code-bg);
+        padding: 1.5rem;
+        border-radius: 8px;
+        border-left: 3px solid var(--accent);
+      }
+      
+      pre {
+        background: var(--code-bg);
+        padding: 1.5rem;
+        border-radius: 8px;
+        overflow-x: auto;
+        font-family: 'SF Mono', 'Fira Code', monospace;
+        font-size: 0.9rem;
+        margin: 1rem 0;
+      }
+      
+      code {
+        font-family: 'SF Mono', 'Fira Code', monospace;
+        background: var(--code-bg);
+        padding: 0.2rem 0.4rem;
+        border-radius: 4px;
+      }
+      
+      .features {
+        display: grid;
+        gap: 1.5rem;
+      }
+      
+      .feature {
+        display: flex;
+        gap: 1rem;
+        align-items: flex-start;
+      }
+      
+      .feature-icon {
+        font-size: 1.5rem;
+      }
+      
+      .feature h3 {
+        font-size: 1.1rem;
+        margin-bottom: 0.25rem;
+      }
+      
+      .feature p {
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+      
+      footer {
+        text-align: center;
+        padding: 4rem 0;
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+      
+      a {
+        color: var(--accent);
+        text-decoration: none;
+      }
+      
+      a:hover {
+        text-decoration: underline;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <h1>devmux</h1>
+        <p class="tagline">
+          tmux-based service management for monorepos.<br />
+          <strong>Shared awareness</strong> between human developers and AI agents.
+        </p>
+        <div class="install">
+          <span class="accent">$</span> npm install -g @chriscode/devmux
+        </div>
+      </header>
+      
+      <section>
+        <h2>The Problem</h2>
+        <div class="problem">
+          <div class="problem-box">
+            <strong>Human:</strong> <code>pnpm dev</code> → Server running on port 8787<br />
+            <strong>Agent:</strong> <code>pnpm dev</code> → Port conflict! Or kills your server!
+          </div>
+        </div>
+        <p>
+          When humans and AI agents work in the same codebase, they step on each other.
+          Agents restart servers you're using. You lose state when agents kill processes.
+          There's no shared awareness.
+        </p>
+      </section>
+      
+      <section>
+        <h2>The Solution</h2>
+        <div class="solution-box">
+          <strong>Human:</strong> <code>devmux run --with api -- pnpm ios</code><br />
+          <strong>Agent:</strong> <code>devmux ensure api</code> → "✅ Already running"
+        </div>
+        <p style="margin-top: 1rem;">
+          devmux uses tmux sessions with predictable names as a shared registry.
+          Both humans and agents can see what's running and reuse existing services.
+        </p>
+      </section>
+      
+      <section>
+        <h2>Quick Start</h2>
+        <pre><code># Install
+npm install -g @chriscode/devmux
+
+# Create config
+devmux init > devmux.config.json
+
+# Use it
+devmux ensure api           # Idempotent start
+devmux status               # See what's running
+devmux run --with api -- pnpm ios  # Run with cleanup</code></pre>
+      </section>
+      
+      <section>
+        <h2>Features</h2>
+        <div class="features">
+          <div class="feature">
+            <span class="feature-icon">🔄</span>
+            <div>
+              <h3>Idempotent Operations</h3>
+              <p><code>devmux ensure api</code> is always safe to call. Running? Reuse. Stopped? Start.</p>
+            </div>
+          </div>
+          <div class="feature">
+            <span class="feature-icon">👁️</span>
+            <div>
+              <h3>Shared Visibility</h3>
+              <p>Both human and agent can see what's running via tmux sessions with predictable names.</p>
+            </div>
+          </div>
+          <div class="feature">
+            <span class="feature-icon">🧹</span>
+            <div>
+              <h3>Smart Cleanup</h3>
+              <p>Ctrl+C cleans up services you started, but not the agent's. No more stepping on each other.</p>
+            </div>
+          </div>
+          <div class="feature">
+            <span class="feature-icon">❤️</span>
+            <div>
+              <h3>Health-First</h3>
+              <p>Checks if services are actually healthy, not just if a process exists.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+      
+      <section>
+        <h2>Works With</h2>
+        <p>
+          OpenCode, Claude Code, Cursor, and any AI assistant that can run terminal commands.
+          Uses the <code>omo-{project}-{service}</code> naming convention for discoverability.
+        </p>
+      </section>
+      
+      <footer>
+        <p>
+          <a href="https://github.com/hassoncs/devmux">GitHub</a> ·
+          <a href="https://www.npmjs.com/package/@chriscode/devmux">npm</a> ·
+          MIT License
+        </p>
+      </footer>
+    </div>
+  </body>
+</html>
