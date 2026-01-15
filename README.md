@@ -1,9 +1,12 @@
-# devmux
+# @chriscode/devmux
 
-**tmux-based service management for monorepos with human-agent shared awareness.**
+> **tmux-based service management for monorepos.** Shared awareness between humans and AI agents—both can see and reuse running dev servers.
 
-[![npm version](https://img.shields.io/npm/v/devmux.svg)](https://www.npmjs.com/package/devmux)
+[![npm](https://img.shields.io/npm/v/@chriscode/devmux)](https://www.npmjs.com/package/@chriscode/devmux)
+[![Documentation](https://img.shields.io/badge/docs-devmux.pages.dev-blue)](https://devmux.pages.dev)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+**[Read the documentation →](https://devmux.pages.dev)**
 
 ## Why devmux?
 
@@ -43,11 +46,11 @@ Later, Agent: devmux ensure api
 ## Installation
 
 ```bash
-npm install -g devmux
+npm install -g @chriscode/devmux
 # or
-pnpm add -g devmux
+pnpm add -g @chriscode/devmux
 # or in your project
-pnpm add -D devmux
+pnpm add -D @chriscode/devmux
 ```
 
 ## Quick Start
@@ -266,7 +269,7 @@ import {
   getAllStatus,
   stopService,
   runWithServices 
-} from 'devmux';
+} from '@chriscode/devmux';
 
 // Load config from current directory
 const config = loadConfig();

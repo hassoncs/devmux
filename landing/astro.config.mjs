@@ -1,6 +1,6 @@
 import { defineConfig } from 'astro/config';
 
 export default defineConfig({
-  site: 'https://devmux.dev',
+  site: 'https://devmux.pages.dev',
   output: 'static',
 });
