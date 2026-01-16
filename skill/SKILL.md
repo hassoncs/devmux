@@ -56,6 +56,6 @@ After starting a service, `devmux` guarantees it is **healthy** (port is listeni
 
 ## 📚 Setup & Configuration
 If the user asks to set up DevMux or configure a new project, read the guide at:
-`.claude/skills/devmux-setup.md`
+`references/SETUP.md`
 
 It explains how to correctly configure `devmux.config.json` and `package.json`.

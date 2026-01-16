@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { defineCommand, runMain } from "citty";
-import { readFileSync, mkdirSync, copyFileSync, existsSync, readdirSync } from "node:fs";
+import { readFileSync, mkdirSync, copyFileSync, existsSync, readdirSync, cpSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "./config/loader.js";
@@ -168,7 +168,7 @@ const installSkill = defineCommand({
   run() {
     const __dirname = dirname(fileURLToPath(import.meta.url));
     const skillDir = join(__dirname, "skill");
-    const targetDir = join(process.cwd(), ".claude", "skills");
+    const targetDir = join(process.cwd(), ".claude", "skills", "devmux");
 
     try {
       if (!existsSync(skillDir)) {
@@ -176,14 +176,9 @@ const installSkill = defineCommand({
       }
 
       mkdirSync(targetDir, { recursive: true });
+      cpSync(skillDir, targetDir, { recursive: true });
       
-      const files = readdirSync(skillDir);
-      for (const file of files) {
-        if (file.endsWith(".md")) {
-          copyFileSync(join(skillDir, file), join(targetDir, file));
-          console.log(`✅ Installed .claude/skills/${file}`);
-        }
-      }
+      console.log(`✅ Installed DevMux skill to .claude/skills/devmux/`);
     } catch (e) {
       console.error("❌ Failed to install skills:");
       console.error(e);

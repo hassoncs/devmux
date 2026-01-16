@@ -223,11 +223,11 @@ devmux init > devmux.config.json
 
 ### `devmux install-skill`
 
-Install the official DevMux Skill for AI agents to `.claude/skills/devmux.md`.
+Install the official DevMux Skill for AI agents to `.claude/skills/devmux/`.
 
 ```bash
 devmux install-skill
-# ✅ Installed DevMux skill to .claude/skills/devmux.md
+# ✅ Installed DevMux skill to .claude/skills/devmux/
 ```
 
 ## Configuration
