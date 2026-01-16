@@ -250,6 +250,7 @@ interface DevMuxConfig {
       sessionName?: string;           // Override full session name
       env?: Record<string, string>;   // Environment variables
       stopPorts?: number[];           // Additional ports to kill on stop
+      dependsOn?: string[];           // Services that must be healthy first
     };
   };
 }

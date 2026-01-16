@@ -14,11 +14,28 @@ export interface EnsureResult {
 export async function ensureService(
   config: ResolvedConfig,
   serviceName: string,
-  options: { timeout?: number; quiet?: boolean } = {}
+  options: { timeout?: number; quiet?: boolean } = {},
+  _dependencyStack: Set<string> = new Set()
 ): Promise<EnsureResult> {
+  if (_dependencyStack.has(serviceName)) {
+    throw new Error(`Circular dependency detected: ${Array.from(_dependencyStack).join(' -> ')} -> ${serviceName}`);
+  }
+
   const service = config.services[serviceName];
   if (!service) {
     throw new Error(`Unknown service: ${serviceName}`);
+  }
+
+  if (service.dependsOn && service.dependsOn.length > 0) {
+    _dependencyStack.add(serviceName);
+    try {
+      if (!options.quiet) console.log(`Checking dependencies for ${serviceName}...`);
+      for (const dep of service.dependsOn) {
+        await ensureService(config, dep, options, _dependencyStack);
+      }
+    } finally {
+      _dependencyStack.delete(serviceName);
+    }
   }
 
   const sessionName = getSessionName(config, serviceName);

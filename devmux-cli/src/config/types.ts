@@ -10,6 +10,7 @@ export interface ServiceDefinition {
   sessionName?: string;
   env?: Record<string, string>;
   stopPorts?: number[];
+  dependsOn?: string[];
 }
 
 export interface DevMuxConfig {

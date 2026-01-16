@@ -94,7 +94,6 @@ const run = defineCommand({
   args: {
     with: { type: "string", description: "Comma-separated services to ensure", required: true },
     "no-stop": { type: "boolean", description: "Don't stop services on exit" },
-    _: { type: "positional", description: "Command to run" },
   },
   async run({ args }) {
     const config = loadConfig();

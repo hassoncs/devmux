@@ -33,12 +33,13 @@ If a service shows as "Running", **do not restart it**. Use the existing instanc
 Use `devmux ensure` - it's idempotent and safe to call multiple times:
 
 ```bash
-devmux ensure api
+devmux ensure web
 ```
 
 This will:
 - If healthy → reuse existing (no restart)
 - If unhealthy/stopped → start in tmux
+- **Auto-start dependencies**: If `web` depends on `api`, it ensures `api` is healthy first!
 
 ### Session Naming Convention
 
