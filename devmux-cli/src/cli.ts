@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { defineCommand, runMain } from "citty";
-import { readFileSync } from "node:fs";
+import { readFileSync, mkdirSync, copyFileSync, existsSync, readdirSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "./config/loader.js";
@@ -163,22 +163,30 @@ const init = defineCommand({
   },
 });
 
-const skill = defineCommand({
-  meta: { name: "skill", description: "Print the DevMux skill for AI agents" },
-  args: {
-    setup: { type: "boolean", description: "Print the setup guide instead of the main skill" },
-  },
-  run({ args }) {
+const installSkill = defineCommand({
+  meta: { name: "install-skill", description: "Install DevMux skills to .claude/skills" },
+  run() {
     const __dirname = dirname(fileURLToPath(import.meta.url));
-    const filename = args.setup ? "SETUP.md" : "SKILL.md";
-    const skillPath = join(__dirname, "skill", filename);
-    
+    const skillDir = join(__dirname, "skill");
+    const targetDir = join(process.cwd(), ".claude", "skills");
+
     try {
-      const content = readFileSync(skillPath, "utf-8");
-      console.log(content);
+      if (!existsSync(skillDir)) {
+        throw new Error(`Skill directory not found at ${skillDir}`);
+      }
+
+      mkdirSync(targetDir, { recursive: true });
+      
+      const files = readdirSync(skillDir);
+      for (const file of files) {
+        if (file.endsWith(".md")) {
+          copyFileSync(join(skillDir, file), join(targetDir, file));
+          console.log(`✅ Installed .claude/skills/${file}`);
+        }
+      }
     } catch (e) {
-      console.error(`❌ Could not load skill/${filename}`);
-      console.error(`Expected at: ${skillPath}`);
+      console.error("❌ Failed to install skills:");
+      console.error(e);
       process.exit(1);
     }
   },
@@ -198,7 +206,7 @@ const main = defineCommand({
     run,
     discover,
     init,
-    skill,
+    "install-skill": installSkill,
   },
 });
 

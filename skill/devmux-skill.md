@@ -55,8 +55,7 @@ Sessions follow the pattern: `omo-{project}-{service}`.
 After starting a service, `devmux` guarantees it is **healthy** (port is listening). You do NOT need to write a loop to check `curl localhost:port`. `devmux ensure` does not return until the service is ready.
 
 ## 📚 Setup & Configuration
-If the user asks to set up DevMux or configure a new project, run:
-```bash
-devmux skill --setup
-```
-Read that guide to correctly configure `devmux.config.json` and `package.json`.
+If the user asks to set up DevMux or configure a new project, read the guide at:
+`.claude/skills/devmux-setup.md`
+
+It explains how to correctly configure `devmux.config.json` and `package.json`.
