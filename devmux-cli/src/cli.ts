@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 
 import { defineCommand, runMain } from "citty";
+import { readFileSync } from "node:fs";
+import { resolve, dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { loadConfig } from "./config/loader.js";
 import {
   ensureService,
@@ -160,6 +163,27 @@ const init = defineCommand({
   },
 });
 
+const skill = defineCommand({
+  meta: { name: "skill", description: "Print the DevMux skill for AI agents" },
+  args: {
+    setup: { type: "boolean", description: "Print the setup guide instead of the main skill" },
+  },
+  run({ args }) {
+    const __dirname = dirname(fileURLToPath(import.meta.url));
+    const filename = args.setup ? "SETUP.md" : "SKILL.md";
+    const skillPath = join(__dirname, "skill", filename);
+    
+    try {
+      const content = readFileSync(skillPath, "utf-8");
+      console.log(content);
+    } catch (e) {
+      console.error(`❌ Could not load skill/${filename}`);
+      console.error(`Expected at: ${skillPath}`);
+      process.exit(1);
+    }
+  },
+});
+
 const main = defineCommand({
   meta: {
     name: "devmux",
@@ -174,6 +198,7 @@ const main = defineCommand({
     run,
     discover,
     init,
+    skill,
   },
 });
 

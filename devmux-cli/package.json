@@ -13,7 +13,7 @@
     }
   },
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && mkdir -p dist/skill && cp ../skill/*.md dist/skill/",
     "dev": "tsup --watch",
     "prepublishOnly": "pnpm build",
     "type-check": "tsc --noEmit",

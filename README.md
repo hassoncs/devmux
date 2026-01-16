@@ -221,6 +221,14 @@ Print a config template to get started.
 devmux init > devmux.config.json
 ```
 
+### `devmux skill`
+
+Print the official DevMux Skill for AI agents. Redirect this to your agent instructions file.
+
+```bash
+devmux skill > AGENTS.md
+```
+
 ## Configuration
 
 ### Config file locations
