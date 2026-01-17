@@ -11,6 +11,7 @@ export interface ServiceDefinition {
   env?: Record<string, string>;
   stopPorts?: number[];
   dependsOn?: string[];
+  port?: number;
 }
 
 export interface DevMuxConfig {
@@ -27,6 +28,7 @@ export interface DevMuxConfig {
 export interface ResolvedConfig extends DevMuxConfig {
   configRoot: string;
   resolvedSessionPrefix: string;
+  instanceId: string;
 }
 
 export interface ServiceStatus {
@@ -34,5 +36,7 @@ export interface ServiceStatus {
   healthy: boolean;
   tmuxSession: string | null;
   port?: number;
+  resolvedPort?: number;
   managedByDevmux: boolean;
+  instanceId?: string;
 }

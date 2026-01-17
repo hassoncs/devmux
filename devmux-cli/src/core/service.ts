@@ -1,6 +1,6 @@
 import { execSync } from "node:child_process";
-import type { ResolvedConfig, ServiceStatus } from "../config/types.js";
-import { getSessionName, getServiceCwd } from "../config/loader.js";
+import type { ResolvedConfig, ServiceStatus, HealthCheckType } from "../config/types.js";
+import { getSessionName, getServiceCwd, getResolvedPort } from "../config/loader.js";
 import * as tmux from "../tmux/driver.js";
 import { checkHealth, getHealthPort } from "../health/checkers.js";
 import { acquireLock, releaseLock } from "../utils/lock.js";
@@ -42,8 +42,12 @@ export async function ensureService(
   const cwd = getServiceCwd(config, serviceName);
   const timeout = options.timeout ?? config.defaults?.startupTimeoutSeconds ?? 30;
   const log = options.quiet ? () => {} : console.log;
+  
+  const resolvedPort = getResolvedPort(config, serviceName);
+  const resolvedHealth = resolveHealthCheck(service.health, resolvedPort);
+  const env = buildServiceEnv(config, serviceName, service.env);
 
-  const isHealthy = await checkHealth(service.health);
+  const isHealthy = await checkHealth(resolvedHealth);
   if (isHealthy) {
     const hasTmux = tmux.hasSession(sessionName);
     log(`✅ ${serviceName} already running`);
@@ -52,6 +56,9 @@ export async function ensureService(
     } else {
       log(`   └─ (running outside tmux)`);
     }
+    if (resolvedPort && config.instanceId) {
+      log(`   └─ port: ${resolvedPort} (instance: ${config.instanceId})`);
+    }
     return { serviceName, startedByUs: false, sessionName };
   }
 
@@ -59,7 +66,7 @@ export async function ensureService(
     log(`⏳ Another process is starting ${serviceName}, waiting...`);
     for (let i = 0; i < 10; i++) {
       await sleep(1000);
-      if (await checkHealth(service.health)) {
+      if (await checkHealth(resolvedHealth)) {
         log(`✅ ${serviceName} now running`);
         return { serviceName, startedByUs: false, sessionName };
       }
@@ -74,14 +81,17 @@ export async function ensureService(
     }
 
     log(`🚀 Starting ${serviceName} in tmux session: ${sessionName}`);
-    tmux.newSession(sessionName, cwd, service.command, service.env);
+    if (resolvedPort && config.instanceId) {
+      log(`   └─ port: ${resolvedPort} (instance: ${config.instanceId})`);
+    }
+    tmux.newSession(sessionName, cwd, service.command, env);
 
     const remainOnExit = config.defaults?.remainOnExit ?? true;
     tmux.setRemainOnExit(sessionName, remainOnExit);
 
     log(`⏳ Waiting for ${serviceName} to be ready...`);
     for (let i = 0; i < timeout; i++) {
-      if (await checkHealth(service.health)) {
+      if (await checkHealth(resolvedHealth)) {
         log(`✅ ${serviceName} ready`);
         log(`   └─ tmux session: ${sessionName}`);
         return { serviceName, startedByUs: true, sessionName };
@@ -105,7 +115,9 @@ export async function getStatus(
   }
 
   const sessionName = getSessionName(config, serviceName);
-  const healthy = await checkHealth(service.health);
+  const resolvedPort = getResolvedPort(config, serviceName);
+  const resolvedHealth = resolveHealthCheck(service.health, resolvedPort);
+  const healthy = await checkHealth(resolvedHealth);
   const hasTmux = tmux.hasSession(sessionName);
 
   return {
@@ -113,7 +125,9 @@ export async function getStatus(
     healthy,
     tmuxSession: hasTmux ? sessionName : null,
     port: getHealthPort(service.health),
+    resolvedPort,
     managedByDevmux: hasTmux,
+    instanceId: config.instanceId || undefined,
   };
 }
 
@@ -146,9 +160,15 @@ export function stopService(
   }
 
   if (options.killPorts) {
-    const ports = service.stopPorts ?? [];
-    const healthPort = getHealthPort(service.health);
-    if (healthPort) ports.push(healthPort);
+    const resolvedPort = getResolvedPort(config, serviceName);
+    const ports: number[] = [];
+    
+    if (resolvedPort) ports.push(resolvedPort);
+    if (service.stopPorts) {
+      for (const p of service.stopPorts) {
+        ports.push(p);
+      }
+    }
 
     for (const port of [...new Set(ports)]) {
       try {
@@ -192,4 +212,55 @@ export function attachService(config: ResolvedConfig, serviceName: string): void
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function resolveHealthCheck(health: HealthCheckType, resolvedPort: number | undefined): HealthCheckType {
+  if (resolvedPort === undefined) return health;
+  
+  if (health.type === "port") {
+    return { ...health, port: resolvedPort };
+  }
+  if (health.type === "http") {
+    try {
+      const url = new URL(health.url);
+      url.port = String(resolvedPort);
+      return { ...health, url: url.toString() };
+    } catch {
+      return health;
+    }
+  }
+  return health;
+}
+
+function buildServiceEnv(
+  config: ResolvedConfig,
+  serviceName: string,
+  userEnv?: Record<string, string>
+): Record<string, string> {
+  const resolvedPort = getResolvedPort(config, serviceName);
+  const env: Record<string, string> = {};
+  
+  if (resolvedPort !== undefined) {
+    env.PORT = String(resolvedPort);
+    env.DEVMUX_PORT = String(resolvedPort);
+  }
+  
+  if (config.instanceId) {
+    env.DEVMUX_INSTANCE_ID = config.instanceId;
+  }
+  
+  env.DEVMUX_SERVICE = serviceName;
+  env.DEVMUX_PROJECT = config.project;
+  
+  if (userEnv) {
+    for (const [key, value] of Object.entries(userEnv)) {
+      env[key] = value
+        .replace(/\{\{PORT\}\}/g, String(resolvedPort ?? ""))
+        .replace(/\{\{INSTANCE\}\}/g, config.instanceId)
+        .replace(/\{\{SERVICE\}\}/g, serviceName)
+        .replace(/\{\{PROJECT\}\}/g, config.project);
+    }
+  }
+  
+  return env;
 }

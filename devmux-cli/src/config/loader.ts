@@ -1,6 +1,8 @@
 import { readFileSync, existsSync } from "node:fs";
-import { resolve, dirname, basename } from "node:path";
-import type { DevMuxConfig, ResolvedConfig } from "./types.js";
+import { resolve, dirname } from "node:path";
+import type { DevMuxConfig, ResolvedConfig, HealthCheckType } from "./types.js";
+import { resolveInstanceId } from "../utils/worktree.js";
+import { resolvePort } from "../utils/port.js";
 
 const CONFIG_NAMES = [
   "devmux.config.json",
@@ -76,11 +78,13 @@ export function loadConfig(startDir: string = process.cwd()): ResolvedConfig {
   const configRoot = dirname(configPath);
   const resolvedSessionPrefix =
     config.sessionPrefix ?? `omo-${config.project}`;
+  const instanceId = resolveInstanceId();
 
   return {
     ...config,
     configRoot,
     resolvedSessionPrefix,
+    instanceId,
   };
 }
 
@@ -88,6 +92,9 @@ export function getSessionName(config: ResolvedConfig, serviceName: string): str
   const service = config.services[serviceName];
   if (service?.sessionName) {
     return service.sessionName;
+  }
+  if (config.instanceId) {
+    return `${config.resolvedSessionPrefix}-${config.instanceId}-${serviceName}`;
   }
   return `${config.resolvedSessionPrefix}-${serviceName}`;
 }
@@ -98,4 +105,28 @@ export function getServiceCwd(config: ResolvedConfig, serviceName: string): stri
     throw new Error(`Unknown service: ${serviceName}`);
   }
   return resolve(config.configRoot, service.cwd);
+}
+
+export function getBasePort(health: HealthCheckType, explicitPort?: number): number | undefined {
+  if (explicitPort !== undefined) return explicitPort;
+  if (health.type === "port") return health.port;
+  if (health.type === "http") {
+    try {
+      const url = new URL(health.url);
+      return parseInt(url.port) || (url.protocol === "https:" ? 443 : 80);
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
+export function getResolvedPort(config: ResolvedConfig, serviceName: string): number | undefined {
+  const service = config.services[serviceName];
+  if (!service) return undefined;
+  
+  const basePort = getBasePort(service.health, service.port);
+  if (basePort === undefined) return undefined;
+  
+  return resolvePort(basePort, config.instanceId);
 }

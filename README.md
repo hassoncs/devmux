@@ -123,8 +123,9 @@ This means devmux works even if you started a server manually without tmux.
 
 ### Session naming convention
 
-Sessions are named `{prefix}-{service}`:
+Sessions are named `{prefix}-{service}` (or `{prefix}-{instance}-{service}` with multi-worktree):
 - Default prefix: `omo-{project}` (e.g., `omo-myapp-api`)
+- With instance: `omo-{project}-{instance}-{service}` (e.g., `omo-myapp-feature-x-api`)
 - The `omo-` prefix matches OpenCode's convention
 - Predictable names let agents discover human-started sessions and vice versa
 
@@ -137,6 +138,63 @@ When you run `devmux run --with api -- pnpm ios`:
 4. On Ctrl+C: only stops services "we started"
 
 This prevents accidentally killing the agent's API server when you exit.
+
+## Multi-Worktree Support
+
+When running multiple git worktrees of the same project (common in parallel AI agent workflows), DevMux automatically prevents port and session conflicts.
+
+### How It Works
+
+DevMux detects when you're in a git worktree and automatically:
+1. **Adds the worktree name to session names**: `omo-myapp-feature-x-api` instead of `omo-myapp-api`
+2. **Applies a deterministic port offset**: Port 8787 becomes 9549 (based on hash of worktree name)
+3. **Passes the resolved port via `PORT` env var**: Services can read `$PORT` to use the correct port
+
+### Usage
+
+**Git Worktrees (Zero Config)**
+```bash
+# Main checkout at /code/myapp
+cd /code/myapp
+devmux ensure api
+# → Session: omo-myapp-api, Port: 8787
+
+# Worktree at /code/myapp-feature-x
+cd /code/myapp-feature-x
+devmux ensure api
+# → Session: omo-myapp-feature-x-api, Port: 9549
+```
+
+**Explicit Instance ID**
+```bash
+# For non-worktree scenarios (CI, multiple checkouts)
+DEVMUX_INSTANCE_ID=agent-1 devmux ensure api
+DEVMUX_INSTANCE_ID=agent-2 devmux ensure api
+```
+
+### Service Configuration
+
+For services to use the DevMux-assigned port, they must read from the `PORT` environment variable:
+
+```json
+{
+  "services": {
+    "api": {
+      "command": "node server.js",
+      "health": { "type": "port", "port": 8787 }
+    }
+  }
+}
+```
+
+DevMux will:
+- Set `PORT=8787` (or `PORT=9549` with instance offset)
+- Health check the resolved port
+- Pass additional env vars: `DEVMUX_PORT`, `DEVMUX_INSTANCE_ID`, `DEVMUX_SERVICE`, `DEVMUX_PROJECT`
+
+### Backwards Compatibility
+
+Without `DEVMUX_INSTANCE_ID` set and outside of a git worktree, DevMux behaves exactly as before—no port offsets, no instance suffix in session names.
 
 ## CLI Reference
 
@@ -313,7 +371,8 @@ See [docs/AGENTS_TEMPLATE.md](./docs/AGENTS_TEMPLATE.md) for a copy-pasteable sn
 The key points for agents:
 1. Always check `devmux status` before starting services
 2. Use `devmux ensure <service>` (idempotent, won't restart if healthy)
-3. Session names follow pattern `omo-{project}-{service}`
+3. Session names follow pattern `omo-{project}-{service}` (or `omo-{project}-{instance}-{service}` in worktrees)
+4. In git worktrees, ports are automatically offset to prevent conflicts
 
 ## License
 

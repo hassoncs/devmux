@@ -39,18 +39,22 @@ const status = defineCommand({
     const statuses = await getAllStatus(config);
 
     if (args.json) {
-      console.log(JSON.stringify(statuses, null, 2));
+      console.log(JSON.stringify({ instanceId: config.instanceId || null, services: statuses }, null, 2));
       return;
     }
 
     console.log("═══════════════════════════════════════");
     console.log("       Service Status");
+    if (config.instanceId) {
+      console.log(`       Instance: ${config.instanceId}`);
+    }
     console.log("═══════════════════════════════════════");
     console.log("");
 
     for (const s of statuses) {
       const icon = s.healthy ? "✅" : "❌";
-      const portInfo = s.port ? ` (port ${s.port})` : "";
+      const portDisplay = s.resolvedPort ?? s.port;
+      const portInfo = portDisplay ? ` (port ${portDisplay})` : "";
       console.log(`${icon} ${s.name}${portInfo}: ${s.healthy ? "Running" : "Not running"}`);
 
       if (s.tmuxSession) {
