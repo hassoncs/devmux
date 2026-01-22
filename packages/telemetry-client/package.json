@@ -3,6 +3,8 @@
   "version": "0.1.0",
   "description": "Telemetry client for DevMux - captures console logs and errors from Browser/React Native/Expo",
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "import": "./dist/index.js",

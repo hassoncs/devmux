@@ -1,4 +1,4 @@
-import { spawn, execSync, ChildProcess } from "node:child_process";
+import { spawn, execSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 
@@ -71,28 +71,10 @@ export function startServer(options: { port?: number; host?: string } = {}): boo
   const port = options.port ?? DEFAULT_PORT;
   const host = options.host ?? DEFAULT_HOST;
 
-  const serverScript = `
-const { createServer } = require('@chriscode/devmux-telemetry-server');
-const server = createServer({ port: ${port}, host: '${host}' });
-server.start().then(() => {
-  console.log('Telemetry server started');
-}).catch(err => {
-  console.error('Failed to start:', err);
-  process.exit(1);
-});
-process.on('SIGTERM', () => {
-  server.stop().then(() => process.exit(0));
-});
-process.on('SIGINT', () => {
-  server.stop().then(() => process.exit(0));
-});
-`;
-
   try {
-    const child = spawn("node", ["-e", serverScript], {
+    const child = spawn("devmux-telemetry-server", ["start", "--port", String(port), "--host", host], {
       detached: true,
       stdio: ["ignore", "pipe", "pipe"],
-      cwd: process.cwd(),
     });
 
     if (child.pid) {
@@ -105,7 +87,13 @@ process.on('SIGINT', () => {
 
     return false;
   } catch (error) {
-    console.error("Failed to start server:", error);
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      console.error("devmux-telemetry-server not found.");
+      console.error("Install it with: pnpm add -g @chriscode/devmux-telemetry-server");
+      console.error("Or add it to your project: pnpm add -D @chriscode/devmux-telemetry-server");
+    } else {
+      console.error("Failed to start server:", error);
+    }
     return false;
   }
 }
