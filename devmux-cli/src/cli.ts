@@ -321,6 +321,62 @@ const watch = defineCommand({
   },
 });
 
+const telemetryStart = defineCommand({
+  meta: { name: "start", description: "Start the telemetry server" },
+  args: {
+    port: { type: "string", description: "Port to listen on (default: 9876)" },
+    host: { type: "string", description: "Host to bind to (default: 0.0.0.0)" },
+  },
+  async run({ args }) {
+    const { startServer } = await import("./telemetry/server-manager.js");
+    startServer({
+      port: args.port ? parseInt(args.port) : undefined,
+      host: args.host,
+    });
+  },
+});
+
+const telemetryStop = defineCommand({
+  meta: { name: "stop", description: "Stop the telemetry server" },
+  async run() {
+    const { stopServer } = await import("./telemetry/server-manager.js");
+    stopServer();
+  },
+});
+
+const telemetryStatus = defineCommand({
+  meta: { name: "status", description: "Show telemetry server status" },
+  args: {
+    json: { type: "boolean", description: "Output as JSON" },
+  },
+  async run({ args }) {
+    const { getServerStatus } = await import("./telemetry/server-manager.js");
+    const status = getServerStatus();
+
+    if (args.json) {
+      console.log(JSON.stringify(status, null, 2));
+      return;
+    }
+
+    if (status.running) {
+      console.log(`Telemetry Server: Running (PID: ${status.pid})`);
+      console.log(`  Listening on: ws://${status.host}:${status.port}`);
+    } else {
+      console.log("Telemetry Server: Not running");
+      console.log("  Start with: devmux telemetry start");
+    }
+  },
+});
+
+const telemetry = defineCommand({
+  meta: { name: "telemetry", description: "Manage telemetry server for browser/app logs" },
+  subCommands: {
+    start: telemetryStart,
+    stop: telemetryStop,
+    status: telemetryStatus,
+  },
+});
+
 const main = defineCommand({
   meta: {
     name: "devmux",
@@ -336,6 +392,7 @@ const main = defineCommand({
     discover,
     init,
     watch,
+    telemetry,
     "install-skill": installSkill,
   },
 });

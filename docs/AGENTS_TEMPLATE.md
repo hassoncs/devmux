@@ -103,6 +103,33 @@ devmux ensure api
 3. Fix the issue
 4. Clear resolved errors: `devmux watch queue --clear`
 
+### Browser/App Telemetry (if enabled)
+
+When working with web or mobile apps, browser console logs and errors stream to tmux via the telemetry system.
+
+| Task | Command |
+|------|---------|
+| Start telemetry server | `devmux telemetry start` |
+| Check telemetry status | `devmux telemetry status` |
+| Stop telemetry server | `devmux telemetry stop` |
+
+**How it works:**
+- Browser/app errors appear in the error queue (`devmux watch queue`)
+- Console logs stream to tmux sessions named `devmux-telemetry-{stream}`
+- Stack traces are automatically captured for errors
+
+**Scenario: Browser error during development**
+1. Check the error queue: `devmux watch queue`
+2. Browser errors will have source like `telemetry:browser:localhost-3000`
+3. Full stack traces and context are captured
+4. You can also attach to the telemetry tmux session to see live logs
+
+**Scenario: Setting up telemetry for a new app**
+1. Ensure telemetry server is running: `devmux telemetry start`
+2. Add the client SDK to the app (see README for setup instructions)
+3. Initialize with `initTelemetry({ appName: 'my-app' })` in dev mode
+4. Logs and errors will now stream to DevMux
+
 ---
 
 **End of copy-paste section**

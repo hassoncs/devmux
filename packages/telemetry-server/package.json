@@ -1,0 +1,49 @@
+{
+  "name": "@chriscode/devmux-telemetry-server",
+  "version": "0.1.0",
+  "description": "Telemetry server for DevMux - receives logs from browser/RN clients",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "type-check": "tsc --noEmit"
+  },
+  "keywords": [
+    "devmux",
+    "telemetry",
+    "logging",
+    "opentelemetry",
+    "websocket"
+  ],
+  "author": "Chris Hasson",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hassoncs/devmux.git",
+    "directory": "packages/telemetry-server"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/ws": "^8.5.10",
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

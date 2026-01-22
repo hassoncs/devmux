@@ -407,6 +407,146 @@ Errors are stored in `~/.opencode/triggers/queue.jsonl` as newline-delimited JSO
 }
 ```
 
+## Browser/App Telemetry (Experimental)
+
+Stream console logs and errors from your browser, React Native, or Expo apps directly to tmux sessions. Like Sentry/LogRocket but local-first for development.
+
+### Why?
+
+When developing web or mobile apps, errors and logs appear in browser DevTools or Metro bundler output—disconnected from your terminal workflow. DevMux Telemetry bridges this gap:
+
+- **Console logs** from your app stream to tmux sessions
+- **Errors with stack traces** are captured and routed to the error queue
+- **AI agents** can see browser errors without needing DevTools access
+- **Works with** Browser, React Native, and Expo
+
+### Quick Start
+
+**1. Start the telemetry server:**
+
+```bash
+devmux telemetry start
+# 🚀 Telemetry server started on ws://127.0.0.1:9876
+```
+
+**2. Add the client SDK to your app:**
+
+```bash
+pnpm add @chriscode/devmux-telemetry
+```
+
+**3. Initialize in your app entry point:**
+
+```typescript
+// Browser (e.g., main.tsx, index.tsx)
+import { initTelemetry } from '@chriscode/devmux-telemetry';
+
+if (process.env.NODE_ENV === 'development') {
+  initTelemetry({
+    appName: 'my-web-app',
+    serverUrl: 'ws://localhost:9876',
+  });
+}
+
+// React Native / Expo (e.g., App.tsx)
+import { initTelemetry } from '@chriscode/devmux-telemetry';
+
+if (__DEV__) {
+  initTelemetry({
+    appName: 'my-mobile-app',
+    serverUrl: 'ws://localhost:9876', // Use your dev machine's IP for physical devices
+  });
+}
+```
+
+**4. Logs now stream to tmux!**
+
+```bash
+# View in a dedicated tmux session
+tmux attach -t devmux-telemetry-browser-localhost-3000
+
+# Or check the error queue
+devmux watch queue
+```
+
+### Telemetry Commands
+
+| Command | Description |
+|---------|-------------|
+| `devmux telemetry start` | Start the telemetry WebSocket server |
+| `devmux telemetry stop` | Stop the telemetry server |
+| `devmux telemetry status` | Show server status and connected clients |
+
+Options:
+- `--port <number>` - Server port (default: 9876)
+- `--host <string>` - Server host (default: 127.0.0.1)
+
+### What Gets Captured
+
+| Source | Captured | Routed To |
+|--------|----------|-----------|
+| `console.log/info/debug` | ✅ | tmux session |
+| `console.warn` | ✅ | tmux session |
+| `console.error` | ✅ | tmux session + error queue |
+| Uncaught exceptions | ✅ | tmux session + error queue |
+| Unhandled promise rejections | ✅ | tmux session + error queue |
+| React error boundaries | ✅ | tmux session + error queue |
+
+### Client Configuration
+
+```typescript
+initTelemetry({
+  // Required
+  appName: 'my-app',           // Identifies your app in logs
+  
+  // Optional
+  serverUrl: 'ws://localhost:9876',  // Telemetry server URL
+  captureConsole: true,              // Intercept console.* methods
+  captureErrors: true,               // Capture uncaught errors
+  maxRetries: 5,                     // WebSocket reconnection attempts
+  retryDelayMs: 1000,                // Delay between retries
+});
+
+// Shutdown when done (e.g., in cleanup/unmount)
+import { shutdownTelemetry } from '@chriscode/devmux-telemetry';
+shutdownTelemetry();
+```
+
+### Architecture
+
+```
+┌─────────────────┐     WebSocket      ┌─────────────────────┐
+│  Browser/App    │ ─────────────────▶ │  Telemetry Server   │
+│  (Client SDK)   │                    │  (devmux telemetry) │
+└─────────────────┘                    └─────────────────────┘
+                                                │
+                                    ┌───────────┴───────────┐
+                                    ▼                       ▼
+                           ┌──────────────┐       ┌─────────────────┐
+                           │ tmux session │       │ queue.jsonl     │
+                           │ (live logs)  │       │ (errors only)   │
+                           └──────────────┘       └─────────────────┘
+```
+
+### Protocol
+
+The telemetry system uses an OpenTelemetry-aligned protocol:
+
+```typescript
+interface LogPayload {
+  severityNumber: number;    // 1-24 (OpenTelemetry severity)
+  severityText: string;      // "DEBUG", "INFO", "WARN", "ERROR", etc.
+  body: string;              // Log message
+  timestamp: string;         // ISO 8601
+  attributes?: Record<string, unknown>;
+  exception?: {
+    type: string;
+    message: string;
+    stacktrace?: string;
+  };
+}
+```
+
 ## Configuration
 
 ## Configuration

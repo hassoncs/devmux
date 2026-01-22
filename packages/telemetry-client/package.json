@@ -1,0 +1,49 @@
+{
+  "name": "@chriscode/devmux-telemetry",
+  "version": "0.1.0",
+  "description": "Telemetry client for DevMux - captures console logs and errors from Browser/React Native/Expo",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "type-check": "tsc --noEmit"
+  },
+  "keywords": [
+    "devmux",
+    "telemetry",
+    "logging",
+    "console",
+    "react-native",
+    "expo",
+    "browser",
+    "opentelemetry"
+  ],
+  "author": "Chris Hasson",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hassoncs/devmux.git",
+    "directory": "packages/telemetry-client"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "sideEffects": false
+}
