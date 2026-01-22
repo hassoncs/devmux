@@ -51,11 +51,34 @@ pnpm landing:deploy       # Deploy to Cloudflare Pages
 
 ```
 devmux-cli/src/
-├── bin/              # CLI entry point (devmux.js)
-├── commands/         # CLI commands (ensure, status, stop, attach, run, etc.)
-├── lib/              # Core logic (tmux, health checks, config)
-├── config/           # Configuration loading
-└── types.ts          # TypeScript types
+├── cli.ts            # CLI entry point (citty-based)
+├── config/           # Configuration loading and types
+│   ├── loader.ts     # Config discovery and parsing
+│   └── types.ts      # TypeScript interfaces
+├── core/             # Core service management
+│   ├── service.ts    # ensure, status, stop, attach
+│   └── run.ts        # Run command with services
+├── tmux/             # tmux integration
+│   └── driver.ts     # Session management
+├── health/           # Health checking
+│   └── checkers.ts   # Port and HTTP health checks
+├── watch/            # Error watching (NEW)
+│   ├── types.ts      # Watch-related types
+│   ├── patterns.ts   # Default error patterns
+│   ├── deduper.ts    # Content hashing, ring buffer
+│   ├── queue.ts      # JSONL queue reader/writer
+│   ├── watcher.ts    # Core watcher logic
+│   ├── watcher-cli.ts # Entry point for pipe-pane
+│   ├── manager.ts    # Start/stop watchers
+│   └── index.ts      # Exports
+├── discovery/        # Auto-discovery
+│   └── turbo.ts      # Discover from turbo.json
+├── utils/            # Utilities
+│   ├── port.ts       # Port resolution
+│   ├── worktree.ts   # Git worktree detection
+│   ├── lock.ts       # Process locking
+│   └── exec.ts       # Command execution
+└── index.ts          # Public API exports
 ```
 
 ### Key Concepts
@@ -64,6 +87,7 @@ devmux-cli/src/
 - **Session naming convention** - `{prefix}-{project}-{service}` (e.g., `omo-myapp-api`)
 - **Cleanup tracking** - Only stops services "we started" on Ctrl+C
 - **Idempotent operations** - `devmux ensure` is safe to call multiple times
+- **Error watching** - Uses `tmux pipe-pane` to capture errors from service output
 
 ## Release Procedures
 
@@ -194,11 +218,75 @@ brew install tmux
 devmux status --json     # Machine-readable output for debugging
 ```
 
+## Error Watching
+
+DevMux can watch service logs for errors and capture them to a queue.
+
+### How it works
+
+1. `devmux watch start <service>` runs `tmux pipe-pane` to route output through a watcher process
+2. Watcher runs regex patterns against each line
+3. On match: captures context (last N lines), extracts stack traces, dedupes
+4. Writes to `~/.opencode/triggers/queue.jsonl`
+
+### Commands
+
+```bash
+devmux watch start [service]   # Start watching
+devmux watch stop [service]    # Stop watching
+devmux watch status            # Show watcher status
+devmux watch queue             # View captured errors
+devmux watch queue --clear     # Clear queue
+devmux watch queue --json      # JSON output
+```
+
+### Built-in Pattern Sets
+
+Located in `src/watch/patterns.ts` as `BUILTIN_PATTERN_SETS`. Pattern sets are **opt-in** via `include`:
+
+| Set | Patterns |
+|-----|----------|
+| `node` | js-error, type-error, unhandled-rejection, oom |
+| `web` | http-5xx, http-4xx-important |
+| `react` | react-error |
+| `nextjs` | webpack-error, hydration-error |
+| `database` | db-error |
+| `fatal` | fatal (PANIC, SIGSEGV, etc.) |
+| `python` | exception |
+
+Config example:
+```json
+{
+  "services": {
+    "api": {
+      "watch": { "include": ["node", "web"] }
+    }
+  }
+}
+```
+
+### Queue Format
+
+JSONL file at `~/.opencode/triggers/queue.jsonl`:
+```json
+{
+  "id": "uuid",
+  "service": "api",
+  "pattern": "js-error",
+  "severity": "error",
+  "rawContent": "Error: ...",
+  "context": ["line1", "line2"],
+  "stackTrace": ["  at ..."],
+  "status": "pending"
+}
+```
+
 ## Notes for AI Assistants
 
 - Always check `devmux status` before starting services
 - Use `devmux ensure <service>` instead of starting manually (idempotent)
 - Session names follow pattern `omo-{project}-{service}`
 - Don't kill services you didn't start - let cleanup tracking handle it
+- Check `devmux watch queue` for captured errors when debugging
 - For this codebase: TypeScript with strict mode, uses tsup for bundling
 - Follow conventional commit messages for changelog auto-generation

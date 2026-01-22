@@ -96,7 +96,46 @@ Create or update `AGENTS.md` in your project root. Copy the template from:
 
 This tells AI agents how to use devmux.
 
-## Step 5: Test It
+## Step 5: Configure Error Watching (Optional)
+
+DevMux can watch your service logs for errors and capture them for later investigation. Add watch configuration to your `devmux.config.json`:
+
+```json
+{
+  "version": 1,
+  "project": "my-app",
+  "watch": {
+    "enabled": true,
+    "contextLines": 20,
+    "dedupeWindowMs": 5000
+  },
+  "services": {
+    "api": {
+      "cwd": "packages/api",
+      "command": "pnpm dev",
+      "health": { "type": "port", "port": 8787 },
+      "watch": {
+        "enabled": true,
+        "include": ["node", "web", "database"]
+      }
+    }
+  }
+}
+```
+
+**Important:** Pattern sets are opt-in. You must specify which built-in sets to use via `include`.
+
+Then start watching:
+```bash
+devmux watch start api
+```
+
+View captured errors:
+```bash
+devmux watch queue
+```
+
+## Step 6: Test It
 
 ```bash
 # Check status (should show services as not running)
@@ -219,6 +258,83 @@ devmux handles this automatically—it checks health first, then restarts if nee
 To manually clean up:
 ```bash
 devmux stop api --force
+```
+
+## Error Watching
+
+### How it works
+
+When watching is enabled, devmux uses `tmux pipe-pane` to stream service output through a pattern matcher. Matched errors are:
+- Captured with surrounding context lines
+- Deduplicated within a time window
+- Written to `~/.opencode/triggers/queue.jsonl`
+
+### Built-in Pattern Sets
+
+DevMux ships with named pattern sets you explicitly include:
+
+| Set | Patterns | Use for |
+|-----|----------|---------|
+| `node` | js-error, type-error, unhandled-rejection, oom | Node.js services |
+| `web` | http-5xx, http-4xx-important | HTTP APIs |
+| `react` | react-error | React apps |
+| `nextjs` | webpack-error, hydration-error | Next.js apps |
+| `database` | db-error | Database connections |
+| `fatal` | fatal (PANIC, SIGSEGV, etc.) | System crashes |
+| `python` | exception | Python services |
+
+Example:
+```json
+{
+  "services": {
+    "api": {
+      "watch": {
+        "include": ["node", "web", "database"]
+      }
+    }
+  }
+}
+```
+
+### Custom Patterns
+
+Define your own pattern sets in the global `watch` config, then include them:
+
+```json
+{
+  "watch": {
+    "patternSets": {
+      "my-app": [
+        { "name": "my-error", "regex": "\\[MyApp\\] ERROR:", "severity": "error" },
+        { "name": "slow-query", "regex": "query took \\d{4,}ms", "severity": "warning" }
+      ]
+    }
+  },
+  "services": {
+    "api": {
+      "watch": {
+        "include": ["node", "my-app"]
+      }
+    }
+  }
+}
+```
+
+Or add inline patterns per-service:
+
+```json
+{
+  "services": {
+    "api": {
+      "watch": {
+        "include": ["node"],
+        "patterns": [
+          { "name": "custom-error", "regex": "CustomError:", "severity": "error" }
+        ]
+      }
+    }
+  }
+}
 ```
 
 ## Next Steps

@@ -288,6 +288,125 @@ devmux install-skill
 # ✅ Installed DevMux skill to .claude/skills/devmux/
 ```
 
+## Error Watching (Experimental)
+
+DevMux can watch your service logs for errors and capture them to a queue for later processing. This enables push-based error detection where errors are captured automatically as they happen.
+
+### Quick Start
+
+```bash
+# Start watching a service
+devmux watch start api
+
+# Check watcher status
+devmux watch status
+
+# View captured errors
+devmux watch queue
+
+# Stop watching
+devmux watch stop api
+```
+
+### Watch Commands
+
+| Command | Description |
+|---------|-------------|
+| `devmux watch start [service]` | Start watching a service (or all if no service specified) |
+| `devmux watch stop [service]` | Stop watching a service (or all) |
+| `devmux watch status` | Show which services have active watchers |
+| `devmux watch queue` | Show pending errors in the queue |
+| `devmux watch queue --clear` | Clear all errors from the queue |
+| `devmux watch queue --json` | Output queue as JSON |
+
+### Configuration
+
+Add watch configuration to your `devmux.config.json`:
+
+```json
+{
+  "version": 1,
+  "project": "my-app",
+  "watch": {
+    "enabled": true,
+    "outputDir": "~/.opencode/triggers",
+    "dedupeWindowMs": 5000,
+    "contextLines": 20,
+    "patternSets": {
+      "my-custom": [
+        { "name": "my-app-error", "regex": "MyAppError:", "severity": "error" }
+      ]
+    }
+  },
+  "services": {
+    "api": {
+      "cwd": "api",
+      "command": "pnpm dev",
+      "health": { "type": "port", "port": 8787 },
+      "watch": {
+        "enabled": true,
+        "include": ["node", "web", "my-custom"]
+      }
+    },
+    "frontend": {
+      "cwd": "web",
+      "command": "pnpm dev",
+      "health": { "type": "port", "port": 3000 },
+      "watch": {
+        "enabled": true,
+        "include": ["node", "react", "nextjs"]
+      }
+    }
+  }
+}
+```
+
+### Built-in Pattern Sets
+
+DevMux ships with named pattern sets you can include in your services:
+
+| Set | Patterns | Use for |
+|-----|----------|---------|
+| `node` | `js-error`, `type-error`, `unhandled-rejection`, `oom` | Node.js/JavaScript services |
+| `web` | `http-5xx`, `http-4xx-important` | HTTP APIs |
+| `react` | `react-error` | React applications |
+| `nextjs` | `webpack-error`, `hydration-error` | Next.js applications |
+| `database` | `db-error` | Database connections |
+| `fatal` | `fatal` (PANIC, SIGSEGV, etc.) | System-level crashes |
+| `python` | `exception` | Python services |
+
+**Pattern sets are opt-in.** You must explicitly include them in your service config:
+
+```json
+{
+  "watch": {
+    "include": ["node", "web"]
+  }
+}
+```
+
+### Queue Format
+
+Errors are stored in `~/.opencode/triggers/queue.jsonl` as newline-delimited JSON:
+
+```json
+{
+  "id": "uuid",
+  "timestamp": "2024-01-22T10:00:00Z",
+  "source": "devmux:api",
+  "service": "api",
+  "project": "my-app",
+  "severity": "error",
+  "pattern": "js-error",
+  "rawContent": "Error: Connection refused",
+  "context": ["[10:00:00] Starting...", "..."],
+  "stackTrace": ["    at ..."],
+  "status": "pending",
+  "contentHash": "abc123",
+  "firstSeen": "2024-01-22T10:00:00Z"
+}
+```
+
 ## Configuration
 
 ## Configuration

@@ -3,6 +3,29 @@ export type HealthCheckType =
   | { type: "http"; url: string; expectStatus?: number }
   | { type: "none" };
 
+export interface ErrorPatternConfig {
+  name: string;
+  regex: string;
+  severity: "info" | "warning" | "error" | "critical";
+  extractStackTrace?: boolean;
+}
+
+export interface GlobalWatchConfig {
+  enabled?: boolean;
+  outputDir?: string;
+  dedupeWindowMs?: number;
+  contextLines?: number;
+  patternSets?: Record<string, ErrorPatternConfig[]>;
+}
+
+export interface ServiceWatchConfig {
+  enabled?: boolean;
+  include?: string[];
+  exclude?: string[];
+  patterns?: ErrorPatternConfig[];
+  overrides?: Record<string, "info" | "warning" | "error" | "critical">;
+}
+
 export interface ServiceDefinition {
   cwd: string;
   command: string;
@@ -12,6 +35,7 @@ export interface ServiceDefinition {
   stopPorts?: number[];
   dependsOn?: string[];
   port?: number;
+  watch?: ServiceWatchConfig;
 }
 
 export interface DevMuxConfig {
@@ -22,6 +46,7 @@ export interface DevMuxConfig {
     startupTimeoutSeconds?: number;
     remainOnExit?: boolean;
   };
+  watch?: GlobalWatchConfig;
   services: Record<string, ServiceDefinition>;
 }
 

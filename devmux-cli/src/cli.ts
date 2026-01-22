@@ -14,6 +14,16 @@ import {
 } from "./core/service.js";
 import { runWithServices } from "./core/run.js";
 import { discoverFromTurbo, formatDiscoveredConfig } from "./discovery/turbo.js";
+import {
+  getWatcherStatus,
+  getAllWatcherStatuses,
+  startServiceWatcher,
+  stopServiceWatcher,
+  startAllWatchers,
+  stopAllWatchers,
+  getPendingEvents,
+  clearQueue,
+} from "./watch/index.js";
 
 const ensure = defineCommand({
   meta: { name: "ensure", description: "Ensure a service is running (idempotent)" },
@@ -191,6 +201,126 @@ const installSkill = defineCommand({
   },
 });
 
+const watchStart = defineCommand({
+  meta: { name: "start", description: "Start watching a service for errors" },
+  args: {
+    service: { type: "positional", description: "Service name (or 'all')" },
+  },
+  run({ args }) {
+    const config = loadConfig();
+    const serviceName = args.service;
+
+    if (!serviceName || serviceName === "all") {
+      startAllWatchers(config);
+    } else {
+      startServiceWatcher(config, serviceName);
+    }
+  },
+});
+
+const watchStop = defineCommand({
+  meta: { name: "stop", description: "Stop watching a service" },
+  args: {
+    service: { type: "positional", description: "Service name (or 'all')" },
+  },
+  run({ args }) {
+    const config = loadConfig();
+    const serviceName = args.service;
+
+    if (!serviceName || serviceName === "all") {
+      stopAllWatchers(config);
+    } else {
+      stopServiceWatcher(config, serviceName);
+    }
+  },
+});
+
+const watchStatus = defineCommand({
+  meta: { name: "status", description: "Show watcher status" },
+  args: {
+    json: { type: "boolean", description: "Output as JSON" },
+  },
+  run({ args }) {
+    const config = loadConfig();
+    const statuses = getAllWatcherStatuses(config);
+
+    if (args.json) {
+      console.log(JSON.stringify(statuses, null, 2));
+      return;
+    }
+
+    console.log("");
+    console.log("═══════════════════════════════════════");
+    console.log("        Watcher Status");
+    console.log("═══════════════════════════════════════");
+    console.log("");
+
+    for (const s of statuses) {
+      const icon = s.pipeActive ? "👁️" : "⚫";
+      console.log(`${icon} ${s.service}: ${s.pipeActive ? "Watching" : "Not watching"}`);
+      if (s.pipeActive) {
+        console.log(`   └─ session: ${s.sessionName}`);
+      }
+    }
+    console.log("");
+  },
+});
+
+const watchQueue = defineCommand({
+  meta: { name: "queue", description: "Show pending errors in queue" },
+  args: {
+    json: { type: "boolean", description: "Output as JSON" },
+    clear: { type: "boolean", description: "Clear the queue" },
+  },
+  run({ args }) {
+    if (args.clear) {
+      clearQueue();
+      console.log("✅ Queue cleared");
+      return;
+    }
+
+    const events = getPendingEvents();
+
+    if (args.json) {
+      console.log(JSON.stringify(events, null, 2));
+      return;
+    }
+
+    if (events.length === 0) {
+      console.log("No pending errors in queue.");
+      return;
+    }
+
+    console.log("");
+    console.log(`═══════════════════════════════════════`);
+    console.log(`        Pending Errors (${events.length})`);
+    console.log(`═══════════════════════════════════════`);
+    console.log("");
+
+    for (const e of events) {
+      const severityIcon =
+        e.severity === "critical" ? "🔴" :
+        e.severity === "error" ? "🟠" :
+        e.severity === "warning" ? "🟡" : "🔵";
+
+      console.log(`${severityIcon} [${e.service}] ${e.pattern}`);
+      console.log(`   ${e.rawContent.slice(0, 80)}${e.rawContent.length > 80 ? "..." : ""}`);
+      console.log(`   └─ ${e.firstSeen}`);
+      console.log("");
+    }
+  },
+});
+
+const watch = defineCommand({
+  meta: { name: "watch", description: "Manage error watchers for services" },
+  subCommands: {
+    start: watchStart,
+    stop: watchStop,
+    status: watchStatus,
+    queue: watchQueue,
+  },
+});
+
 const main = defineCommand({
   meta: {
     name: "devmux",
@@ -205,6 +335,7 @@ const main = defineCommand({
     run,
     discover,
     init,
+    watch,
     "install-skill": installSkill,
   },
 });

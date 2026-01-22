@@ -18,6 +18,15 @@ This project uses `devmux` for tmux-based service management. This creates share
 | Stop service | `devmux stop <service>` |
 | Stop all services | `devmux stop all` |
 
+### Error Watching (if enabled)
+
+| Task | Command |
+|------|---------|
+| View captured errors | `devmux watch queue` |
+| Check watcher status | `devmux watch status` |
+| Start watching a service | `devmux watch start <service>` |
+| Clear error queue | `devmux watch queue --clear` |
+
 ### Before Starting Any Service
 
 **Always check if services are already running:**
@@ -54,14 +63,21 @@ You can check tmux sessions directly:
 tmux has-session -t omo-myapp-api && echo "Running"
 ```
 
-### If You Need to Start Manually via tmux
+### Handling Errors
 
-Use **exactly** these session names:
+If error watching is enabled, errors are automatically captured:
 
-```bash
-# Check config for the exact session name pattern
-cat devmux.config.json | grep sessionPrefix
-```
+1. **Check for captured errors:**
+   ```bash
+   devmux watch queue
+   ```
+
+2. **Errors include context** - surrounding log lines and stack traces when available.
+
+3. **After fixing**, clear the queue:
+   ```bash
+   devmux watch queue --clear
+   ```
 
 ### Common Scenarios
 
@@ -80,6 +96,12 @@ cat devmux.config.json | grep sessionPrefix
 devmux stop api
 devmux ensure api
 ```
+
+**Scenario: Investigating an error**
+1. Check the error queue: `devmux watch queue`
+2. Review context and stack trace
+3. Fix the issue
+4. Clear resolved errors: `devmux watch queue --clear`
 
 ---
 
