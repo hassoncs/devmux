@@ -3,7 +3,6 @@ import type { ResolvedConfig, ServiceStatus, HealthCheckType } from "../config/t
 import { getSessionName, getServiceCwd, getResolvedPort } from "../config/loader.js";
 import * as tmux from "../tmux/driver.js";
 import { checkHealth, getHealthPort } from "../health/checkers.js";
-import { acquireLock, releaseLock } from "../utils/lock.js";
 
 export interface EnsureResult {
   serviceName: string;
@@ -62,47 +61,31 @@ export async function ensureService(
     return { serviceName, startedByUs: false, sessionName };
   }
 
-  if (!acquireLock(sessionName)) {
-    log(`⏳ Another process is starting ${serviceName}, waiting...`);
-    for (let i = 0; i < 10; i++) {
-      await sleep(1000);
-      if (await checkHealth(resolvedHealth, sessionName)) {
-        log(`✅ ${serviceName} now running`);
-        return { serviceName, startedByUs: false, sessionName };
-      }
-    }
-    throw new Error(`${serviceName} failed to start (locked by another process)`);
+  if (tmux.hasSession(sessionName)) {
+    log(`🔄 Cleaning up stale session: ${sessionName}`);
+    tmux.killSession(sessionName);
   }
 
-  try {
-    if (tmux.hasSession(sessionName)) {
-      log(`🔄 Cleaning up stale session: ${sessionName}`);
-      tmux.killSession(sessionName);
-    }
-
-    log(`🚀 Starting ${serviceName} in tmux session: ${sessionName}`);
-    if (resolvedPort && config.instanceId) {
-      log(`   └─ port: ${resolvedPort} (instance: ${config.instanceId})`);
-    }
-    tmux.newSession(sessionName, cwd, service.command, env);
-
-    const remainOnExit = config.defaults?.remainOnExit ?? true;
-    tmux.setRemainOnExit(sessionName, remainOnExit);
-
-    log(`⏳ Waiting for ${serviceName} to be ready...`);
-    for (let i = 0; i < timeout; i++) {
-      if (await checkHealth(resolvedHealth, sessionName)) {
-        log(`✅ ${serviceName} ready`);
-        log(`   └─ tmux session: ${sessionName}`);
-        return { serviceName, startedByUs: true, sessionName };
-      }
-      await sleep(1000);
-    }
-
-    throw new Error(`${serviceName} failed to start within ${timeout}s`);
-  } finally {
-    releaseLock(sessionName);
+  log(`🚀 Starting ${serviceName} in tmux session: ${sessionName}`);
+  if (resolvedPort && config.instanceId) {
+    log(`   └─ port: ${resolvedPort} (instance: ${config.instanceId})`);
   }
+  tmux.newSession(sessionName, cwd, service.command, env);
+
+  const remainOnExit = config.defaults?.remainOnExit ?? true;
+  tmux.setRemainOnExit(sessionName, remainOnExit);
+
+  log(`⏳ Waiting for ${serviceName} to be ready...`);
+  for (let i = 0; i < timeout; i++) {
+    if (await checkHealth(resolvedHealth, sessionName)) {
+      log(`✅ ${serviceName} ready`);
+      log(`   └─ tmux session: ${sessionName}`);
+      return { serviceName, startedByUs: true, sessionName };
+    }
+    await sleep(1000);
+  }
+
+  throw new Error(`${serviceName} failed to start within ${timeout}s`);
 }
 
 export async function getStatus(
