@@ -47,7 +47,7 @@ export async function ensureService(
   const resolvedHealth = resolveHealthCheck(service.health, resolvedPort);
   const env = buildServiceEnv(config, serviceName, service.env);
 
-  const isHealthy = await checkHealth(resolvedHealth);
+  const isHealthy = await checkHealth(resolvedHealth, sessionName);
   if (isHealthy) {
     const hasTmux = tmux.hasSession(sessionName);
     log(`✅ ${serviceName} already running`);
@@ -66,7 +66,7 @@ export async function ensureService(
     log(`⏳ Another process is starting ${serviceName}, waiting...`);
     for (let i = 0; i < 10; i++) {
       await sleep(1000);
-      if (await checkHealth(resolvedHealth)) {
+      if (await checkHealth(resolvedHealth, sessionName)) {
         log(`✅ ${serviceName} now running`);
         return { serviceName, startedByUs: false, sessionName };
       }
@@ -91,7 +91,7 @@ export async function ensureService(
 
     log(`⏳ Waiting for ${serviceName} to be ready...`);
     for (let i = 0; i < timeout; i++) {
-      if (await checkHealth(resolvedHealth)) {
+      if (await checkHealth(resolvedHealth, sessionName)) {
         log(`✅ ${serviceName} ready`);
         log(`   └─ tmux session: ${sessionName}`);
         return { serviceName, startedByUs: true, sessionName };
@@ -117,7 +117,7 @@ export async function getStatus(
   const sessionName = getSessionName(config, serviceName);
   const resolvedPort = getResolvedPort(config, serviceName);
   const resolvedHealth = resolveHealthCheck(service.health, resolvedPort);
-  const healthy = await checkHealth(resolvedHealth);
+  const healthy = await checkHealth(resolvedHealth, sessionName);
   const hasTmux = tmux.hasSession(sessionName);
 
   return {
@@ -214,7 +214,8 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function resolveHealthCheck(health: HealthCheckType, resolvedPort: number | undefined): HealthCheckType {
+function resolveHealthCheck(health: HealthCheckType | undefined, resolvedPort: number | undefined): HealthCheckType | undefined {
+  if (!health) return undefined;
   if (resolvedPort === undefined) return health;
   
   if (health.type === "port") {

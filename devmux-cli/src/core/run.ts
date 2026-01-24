@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import type { ResolvedConfig } from "../config/types.js";
+import { getSessionName } from "../config/loader.js";
 import { ensureService, stopService, type EnsureResult } from "./service.js";
 import { checkHealth } from "../health/checkers.js";
 
@@ -26,7 +27,8 @@ export async function runWithServices(
       process.exit(1);
     }
 
-    const wasHealthy = await checkHealth(service.health);
+    const sessionName = getSessionName(config, serviceName);
+    const wasHealthy = await checkHealth(service.health, sessionName);
 
     if (wasHealthy) {
       log(`✅ ${serviceName} already running (will keep on exit)`);

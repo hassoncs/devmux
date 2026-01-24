@@ -1,7 +1,6 @@
 export type HealthCheckType =
   | { type: "port"; port: number; host?: string }
-  | { type: "http"; url: string; expectStatus?: number }
-  | { type: "none" };
+  | { type: "http"; url: string; expectStatus?: number };
 
 export interface ErrorPatternConfig {
   name: string;
@@ -29,7 +28,7 @@ export interface ServiceWatchConfig {
 export interface ServiceDefinition {
   cwd: string;
   command: string;
-  health: HealthCheckType;
+  health?: HealthCheckType;
   sessionName?: string;
   env?: Record<string, string>;
   stopPorts?: number[];

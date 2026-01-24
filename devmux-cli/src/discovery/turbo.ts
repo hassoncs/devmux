@@ -102,7 +102,6 @@ export function discoverFromTurbo(root: string): Partial<DevMuxConfig> | null {
         services[serviceName] = {
           cwd: pkg.path,
           command: `pnpm ${task}`,
-          health: { type: "none" },
         };
       }
     }

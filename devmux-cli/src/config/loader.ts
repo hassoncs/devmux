@@ -107,8 +107,9 @@ export function getServiceCwd(config: ResolvedConfig, serviceName: string): stri
   return resolve(config.configRoot, service.cwd);
 }
 
-export function getBasePort(health: HealthCheckType, explicitPort?: number): number | undefined {
+export function getBasePort(health: HealthCheckType | undefined, explicitPort?: number): number | undefined {
   if (explicitPort !== undefined) return explicitPort;
+  if (!health) return undefined;
   if (health.type === "port") return health.port;
   if (health.type === "http") {
     try {

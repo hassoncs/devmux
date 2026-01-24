@@ -1,4 +1,5 @@
 import { createConnection } from "node:net";
+import { execSync } from "node:child_process";
 import type { HealthCheckType } from "../config/types.js";
 
 export function checkPort(port: number, host: string = "127.0.0.1"): Promise<boolean> {
@@ -41,18 +42,39 @@ export async function checkHttp(
   }
 }
 
-export async function checkHealth(health: HealthCheckType): Promise<boolean> {
+export function checkTmuxPane(sessionName: string): boolean {
+  try {
+    const output = execSync(
+      `tmux list-panes -t "${sessionName}" -F "#{pane_dead}"`,
+      { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }
+    );
+    // pane_dead = 0 means alive, 1 means dead
+    return output.trim() === "0";
+  } catch {
+    // Session doesn't exist or tmux error
+    return false;
+  }
+}
+
+export async function checkHealth(
+  health: HealthCheckType | undefined,
+  sessionName: string
+): Promise<boolean> {
+  // If no health check specified, use tmux pane check as default
+  if (!health) {
+    return checkTmuxPane(sessionName);
+  }
+
   switch (health.type) {
     case "port":
       return checkPort(health.port, health.host);
     case "http":
       return checkHttp(health.url, health.expectStatus);
-    case "none":
-      return false;
   }
 }
 
-export function getHealthPort(health: HealthCheckType): number | undefined {
+export function getHealthPort(health: HealthCheckType | undefined): number | undefined {
+  if (!health) return undefined;
   if (health.type === "port") return health.port;
   if (health.type === "http") {
     try {
