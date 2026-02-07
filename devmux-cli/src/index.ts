@@ -10,6 +10,7 @@ export { loadConfig, getSessionName, getServiceCwd } from "./config/loader.js";
 
 export {
   ensureService,
+  restartService,
   getStatus,
   getAllStatus,
   stopService,

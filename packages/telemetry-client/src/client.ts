@@ -3,6 +3,7 @@ import { Transport } from "./transport.js";
 import { detectPlatform, buildTelemetryPlatform, type PlatformInfo } from "./platform.js";
 import { installConsoleCapture, uninstallConsoleCapture } from "./capture/console.js";
 import { installErrorCapture, uninstallErrorCapture } from "./capture/errors.js";
+import { getBufferedLogs, clearBuffer, hasBufferedLogs } from "./capture/buffer.js";
 
 const SDK_NAME = "@chriscode/devmux-telemetry";
 const SDK_VERSION = "0.1.0";
@@ -41,17 +42,20 @@ export class TelemetryClient {
       clientId: this.clientId,
       onSessionEstablished: (response) => {
         if (this.platform.isDev) {
-          this.logInternal(`Connected to telemetry: ${response.streamName}`);
+          // eslint-disable-next-line no-console
+          console.log(`🚀 [devmux-telemetry] Connected! Streaming to: ${response.streamName}`);
         }
       },
       onDisconnect: () => {
         if (this.platform.isDev) {
-          this.logInternal("Telemetry disconnected, will reconnect...");
+          // eslint-disable-next-line no-console
+          console.log("🔌 [devmux-telemetry] Disconnected, will reconnect...");
         }
       },
       onError: (error) => {
         if (this.platform.isDev) {
-          this.logInternal(`Telemetry error: ${error.message}`);
+          // eslint-disable-next-line no-console
+          console.log(`⚠️ [devmux-telemetry] Connection error: ${error.message}`);
         }
       },
     });
@@ -138,8 +142,26 @@ export function initTelemetry(options: TelemetryClientOptions): TelemetryClient 
     return clientInstance;
   }
 
+  // Check if we have buffered logs from early capture
+  const bufferedCount = hasBufferedLogs() ? getBufferedLogs().length : 0;
+  if (bufferedCount > 0) {
+    // eslint-disable-next-line no-console
+    console.log(`📦 [devmux-telemetry] Flushing ${bufferedCount} buffered logs from early capture...`);
+  }
+
   clientInstance = new TelemetryClient(options);
   clientInstance.start();
+
+  // Flush any buffered logs
+  if (hasBufferedLogs()) {
+    const bufferedLogs = getBufferedLogs();
+    for (const log of bufferedLogs) {
+      clientInstance.log(log.body, log.severityText, log.severityNumber);
+    }
+    clearBuffer();
+    // eslint-disable-next-line no-console
+    console.log(`✅ [devmux-telemetry] Flushed ${bufferedLogs.length} buffered logs`);
+  }
 
   return clientInstance;
 }

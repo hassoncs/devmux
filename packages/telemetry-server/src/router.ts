@@ -1,5 +1,5 @@
 import { execSync, spawn, ChildProcess } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, statSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { createHash } from "node:crypto";
@@ -9,6 +9,8 @@ import { formatLogForTmux, formatLogForQueue } from "./formatter.js";
 import { SeverityNumber } from "./protocol.js";
 
 const DEFAULT_OUTPUT_DIR = join(process.env.HOME ?? "~", ".opencode", "triggers");
+const AUTO_PRUNE_THRESHOLD_BYTES = 50 * 1024 * 1024;
+const EVENTS_TO_KEEP_AFTER_PRUNE = 10000;
 
 interface TmuxStream {
   sessionName: string;
@@ -153,6 +155,24 @@ export class Router {
     };
 
     appendFileSync(queuePath, JSON.stringify(event) + "\n");
+    this.pruneQueueIfNeeded(queuePath);
+  }
+
+  private pruneQueueIfNeeded(queuePath: string): void {
+    if (!existsSync(queuePath)) {
+      return;
+    }
+
+    const stats = statSync(queuePath);
+    if (stats.size < AUTO_PRUNE_THRESHOLD_BYTES) {
+      return;
+    }
+
+    const content = readFileSync(queuePath, "utf-8");
+    const lines = content.trim().split("\n").filter(Boolean);
+    const linesToKeep = lines.slice(-EVENTS_TO_KEEP_AFTER_PRUNE);
+    
+    writeFileSync(queuePath, linesToKeep.join("\n") + "\n");
   }
 
   private mapSeverity(

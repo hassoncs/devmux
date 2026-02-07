@@ -2,6 +2,38 @@
 
 > **Guide for AI Agents & Humans**: The proper way to configure a repository for DevMux.
 
+## 0. Install DevMux
+
+```bash
+pnpm add -D @chriscode/devmux
+```
+
+### Make `devmux` Available on PATH (Recommended)
+
+By default, `devmux` requires `npx devmux` or `pnpm exec devmux`. To use `devmux` directly, add `node_modules/.bin` to your PATH using [direnv](https://direnv.net/).
+
+**One-time setup** (if you don't have direnv):
+```bash
+brew install direnv
+# Add to ~/.zshrc or ~/.bashrc:
+eval "$(direnv hook zsh)"  # or bash
+```
+
+**Per-project setup**:
+```bash
+# In your project root, create .envrc:
+echo 'PATH_add node_modules/.bin' > .envrc
+direnv allow
+```
+
+Now `devmux` works directly:
+```bash
+devmux status      # Instead of: npx devmux status
+devmux ensure api  # Instead of: pnpm exec devmux ensure api
+```
+
+> **Note**: This also makes all other local binaries available (eslint, tsc, etc.)
+
 ## 1. Goal
 We want **every** persistent task (servers, watchers) to be managed by DevMux.
 *   ✅ `pnpm dev` -> `devmux ensure web`

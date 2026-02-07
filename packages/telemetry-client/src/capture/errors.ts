@@ -1,7 +1,9 @@
 import type { LogPayload } from "../protocol.js";
 import { SeverityNumber } from "../protocol.js";
+import { addToBuffer } from "./buffer.js";
 
 let errorHandler: ((log: LogPayload) => void) | null = null;
+let isBufferedMode = false;
 
 let originalOnError: OnErrorEventHandler | null = null;
 let originalOnUnhandledRejection: ((event: PromiseRejectionEvent) => void) | null = null;
@@ -13,7 +15,7 @@ function handleError(
   colno?: number,
   error?: Error
 ): void {
-  if (!errorHandler) return;
+  if (!errorHandler && !isBufferedMode) return;
 
   const err = error ?? (message instanceof Error ? message : null);
 
@@ -41,11 +43,15 @@ function handleError(
         },
   };
 
-  errorHandler(log);
+  if (errorHandler) {
+    errorHandler(log);
+  } else if (isBufferedMode) {
+    addToBuffer(log);
+  }
 }
 
 function handleUnhandledRejection(event: PromiseRejectionEvent): void {
-  if (!errorHandler) return;
+  if (!errorHandler && !isBufferedMode) return;
 
   const reason = event.reason;
   const isError = reason instanceof Error;
@@ -69,11 +75,16 @@ function handleUnhandledRejection(event: PromiseRejectionEvent): void {
         },
   };
 
-  errorHandler(log);
+  if (errorHandler) {
+    errorHandler(log);
+  } else if (isBufferedMode) {
+    addToBuffer(log);
+  }
 }
 
 export function installErrorCapture(handler: (log: LogPayload) => void): void {
   errorHandler = handler;
+  isBufferedMode = false;
 
   if (typeof window !== "undefined") {
     originalOnError = window.onerror;
@@ -97,6 +108,37 @@ export function installErrorCapture(handler: (log: LogPayload) => void): void {
   if (typeof global !== "undefined" && isReactNative()) {
     installReactNativeErrorHandler();
   }
+}
+
+export function installBufferedErrorCapture(): void {
+  errorHandler = null;
+  isBufferedMode = true;
+
+  if (typeof window !== "undefined") {
+    originalOnError = window.onerror;
+    window.onerror = (message, source, lineno, colno, error) => {
+      handleError(message, source, lineno, colno, error);
+      if (originalOnError) {
+        return originalOnError(message, source, lineno, colno, error);
+      }
+      return false;
+    };
+
+    originalOnUnhandledRejection = window.onunhandledrejection as typeof originalOnUnhandledRejection;
+    window.onunhandledrejection = (event) => {
+      handleUnhandledRejection(event);
+      if (originalOnUnhandledRejection) {
+        originalOnUnhandledRejection(event);
+      }
+    };
+  }
+
+  if (typeof global !== "undefined" && isReactNative()) {
+    installReactNativeErrorHandler();
+  }
+
+  // eslint-disable-next-line no-console
+  console.log("🚨 [devmux-telemetry] Early error capture active - watching for crashes...");
 }
 
 export function uninstallErrorCapture(): void {
@@ -130,7 +172,7 @@ function installReactNativeErrorHandler(): void {
   const originalHandler = globalAny.ErrorUtils.getGlobalHandler();
 
   globalAny.ErrorUtils.setGlobalHandler((error: Error, isFatal: boolean) => {
-    if (errorHandler) {
+    if (errorHandler || isBufferedMode) {
       const log: LogPayload = {
         timestamp: Date.now(),
         severityNumber: isFatal ? SeverityNumber.FATAL : SeverityNumber.ERROR,
@@ -146,7 +188,11 @@ function installReactNativeErrorHandler(): void {
           isFatal,
         },
       };
-      errorHandler(log);
+      if (errorHandler) {
+        errorHandler(log);
+      } else if (isBufferedMode) {
+        addToBuffer(log);
+      }
     }
 
     if (originalHandler) {

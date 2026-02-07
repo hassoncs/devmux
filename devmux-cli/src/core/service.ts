@@ -176,6 +176,15 @@ export function stopAllServices(
   }
 }
 
+export async function restartService(
+  config: ResolvedConfig,
+  serviceName: string,
+  options: { timeout?: number; killPorts?: boolean; quiet?: boolean } = {}
+): Promise<EnsureResult> {
+  stopService(config, serviceName, { killPorts: options.killPorts, quiet: options.quiet });
+  return ensureService(config, serviceName, { timeout: options.timeout, quiet: options.quiet });
+}
+
 export function attachService(config: ResolvedConfig, serviceName: string): void {
   const service = config.services[serviceName];
   if (!service) {

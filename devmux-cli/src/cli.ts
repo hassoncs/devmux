@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { loadConfig } from "./config/loader.js";
 import {
   ensureService,
+  restartService,
   getAllStatus,
   stopService,
   stopAllServices,
@@ -92,6 +93,36 @@ const stop = defineCommand({
     } else {
       stopService(config, serviceName, { killPorts: args.force });
     }
+  },
+});
+
+const restart = defineCommand({
+  meta: { name: "restart", description: "Restart a service (stop + start)" },
+  args: {
+    service: { type: "positional", description: "Service name", required: true },
+    timeout: { type: "string", description: "Startup timeout in seconds" },
+    force: { type: "boolean", description: "Also kill processes on ports before restarting" },
+  },
+  async run({ args }) {
+    const config = loadConfig();
+    await restartService(config, args.service, {
+      timeout: args.timeout ? parseInt(args.timeout) : undefined,
+      killPorts: args.force,
+    });
+  },
+});
+
+const start = defineCommand({
+  meta: { name: "start", description: "Start a service (alias for ensure)" },
+  args: {
+    service: { type: "positional", description: "Service name", required: true },
+    timeout: { type: "string", description: "Startup timeout in seconds" },
+  },
+  async run({ args }) {
+    const config = loadConfig();
+    await ensureService(config, args.service, {
+      timeout: args.timeout ? parseInt(args.timeout) : undefined,
+    });
   },
 });
 
@@ -385,6 +416,8 @@ const main = defineCommand({
   },
   subCommands: {
     ensure,
+    start,
+    restart,
     status,
     stop,
     attach,

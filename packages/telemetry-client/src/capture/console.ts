@@ -1,5 +1,6 @@
 import type { LogPayload } from "../protocol.js";
 import { SeverityNumber } from "../protocol.js";
+import { addToBuffer } from "./buffer.js";
 
 type ConsoleMethod = "log" | "debug" | "info" | "warn" | "error" | "trace";
 
@@ -15,6 +16,7 @@ const CONSOLE_SEVERITY: Record<ConsoleMethod, number> = {
 const originalMethods: Partial<Record<ConsoleMethod, (...args: unknown[]) => void>> = {};
 
 let logHandler: ((log: LogPayload) => void) | null = null;
+let isBufferedMode = false;
 
 function wrapConsoleMethod(method: ConsoleMethod): void {
   const original = console[method];
@@ -25,7 +27,7 @@ function wrapConsoleMethod(method: ConsoleMethod): void {
   console[method] = (...args: unknown[]) => {
     original.apply(console, args);
 
-    if (!logHandler) return;
+    if (!logHandler && !isBufferedMode) return;
 
     const log: LogPayload = {
       timestamp: Date.now(),
@@ -35,7 +37,11 @@ function wrapConsoleMethod(method: ConsoleMethod): void {
       source: extractSource(),
     };
 
-    logHandler(log);
+    if (logHandler) {
+      logHandler(log);
+    } else if (isBufferedMode) {
+      addToBuffer(log);
+    }
   };
 }
 
@@ -70,6 +76,7 @@ function extractSource(): { file?: string; line?: number; column?: number } | un
 
 export function installConsoleCapture(handler: (log: LogPayload) => void): void {
   logHandler = handler;
+  isBufferedMode = false;
 
   const methods: ConsoleMethod[] = ["log", "debug", "info", "warn", "error", "trace"];
   for (const method of methods) {
@@ -77,8 +84,25 @@ export function installConsoleCapture(handler: (log: LogPayload) => void): void 
   }
 }
 
+export function installBufferedConsoleCapture(): void {
+  logHandler = null;
+  isBufferedMode = true;
+
+  const methods: ConsoleMethod[] = ["log", "debug", "info", "warn", "error", "trace"];
+  for (const method of methods) {
+    // Only wrap if not already wrapped
+    if (!originalMethods[method]) {
+      wrapConsoleMethod(method);
+    }
+  }
+
+  // eslint-disable-next-line no-console
+  console.log("📡 [devmux-telemetry] Early capture active - buffering console logs until init...");
+}
+
 export function uninstallConsoleCapture(): void {
   logHandler = null;
+  isBufferedMode = false;
 
   for (const [method, original] of Object.entries(originalMethods)) {
     if (original) {

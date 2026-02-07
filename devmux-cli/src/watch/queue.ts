@@ -1,10 +1,12 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { TriggerEvent, ErrorPattern, WatcherOptions } from "./types.js";
 import { computeContentHash } from "./deduper.js";
 
 const DEFAULT_OUTPUT_DIR = join(process.env.HOME ?? "~", ".opencode", "triggers");
+const AUTO_PRUNE_THRESHOLD_BYTES = 50 * 1024 * 1024;
+const EVENTS_TO_KEEP_AFTER_PRUNE = 10000;
 
 export function ensureOutputDir(outputDir: string = DEFAULT_OUTPUT_DIR): string {
   if (!existsSync(outputDir)) {
@@ -15,6 +17,26 @@ export function ensureOutputDir(outputDir: string = DEFAULT_OUTPUT_DIR): string 
 
 export function getQueuePath(outputDir: string = DEFAULT_OUTPUT_DIR): string {
   return join(outputDir, "queue.jsonl");
+}
+
+export function pruneQueueIfNeeded(outputDir: string = DEFAULT_OUTPUT_DIR): boolean {
+  const queuePath = getQueuePath(outputDir);
+  
+  if (!existsSync(queuePath)) {
+    return false;
+  }
+
+  const stats = statSync(queuePath);
+  if (stats.size < AUTO_PRUNE_THRESHOLD_BYTES) {
+    return false;
+  }
+
+  const content = readFileSync(queuePath, "utf-8");
+  const lines = content.trim().split("\n").filter(Boolean);
+  const linesToKeep = lines.slice(-EVENTS_TO_KEEP_AFTER_PRUNE);
+  
+  writeFileSync(queuePath, linesToKeep.join("\n") + "\n");
+  return true;
 }
 
 export function writeEvent(
@@ -44,6 +66,7 @@ export function writeEvent(
   };
 
   appendFileSync(queuePath, JSON.stringify(event) + "\n");
+  pruneQueueIfNeeded(outputDir);
   return event;
 }
 
