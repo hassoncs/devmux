@@ -3,6 +3,82 @@
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+
+## [1.3.0] - 2026-02-09
+
+### Added
+
+### Changed
+- refactor:
+- remove
+- lock
+- mechanism,
+- rely
+- solely
+- on
+- tmux
+- for
+- coordination
+- feat:
+- refactor
+- 'install-skill'
+- to
+- copy
+- all
+- skill
+- docs
+- to
+- .claude/skills
+- feat:
+- add
+- tmux
+- pane
+- health
+- check
+- as
+- default
+- for
+- services
+- without
+- explicit
+- health
+- config
+- build:
+- add
+- standalone
+- CLI
+- for
+- telemetry-server
+- feat:
+- implement
+- service
+- dependencies
+- 
+- and
+- update
+- docs
+
+### Documentation
+
+### Internal
+- chore:
+- bump
+- version
+- to
+- 1.1.0
+
+[Unreleased]: https://github.com/hassoncs/devmux/compare/v1.3.0...main
+[1.3.0]: https://github.com/hassoncs/devmux/releases/tag/v1.3.0
+
+
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]

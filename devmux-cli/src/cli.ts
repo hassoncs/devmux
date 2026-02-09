@@ -25,6 +25,7 @@ import {
   getPendingEvents,
   clearQueue,
 } from "./watch/index.js";
+import { diagnosePort, formatDiagnosis } from "./utils/diagnose.js";
 
 const ensure = defineCommand({
   meta: { name: "ensure", description: "Ensure a service is running (idempotent)" },
@@ -205,6 +206,34 @@ const init = defineCommand({
     console.log(JSON.stringify(template, null, 2));
     console.log("");
     console.log("Save this as devmux.config.json in your project root.");
+  },
+});
+
+const diagnose = defineCommand({
+  meta: { name: "diagnose", description: "Diagnose port issues for a service" },
+  args: {
+    service: { type: "positional", description: "Service name", required: true },
+    json: { type: "boolean", description: "Output as JSON" },
+  },
+  run({ args }) {
+    const config = loadConfig();
+    const { getResolvedPort } = require("./config/loader.js");
+
+    const port = getResolvedPort(config, args.service);
+
+    if (port === undefined) {
+      console.error(`❌ No port configured for service: ${args.service}`);
+      process.exit(1);
+    }
+
+    const result = diagnosePort(port, args.service);
+
+    if (args.json) {
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+
+    console.log(formatDiagnosis(result));
   },
 });
 
@@ -424,6 +453,7 @@ const main = defineCommand({
     run,
     discover,
     init,
+    diagnose,
     watch,
     telemetry,
     "install-skill": installSkill,
