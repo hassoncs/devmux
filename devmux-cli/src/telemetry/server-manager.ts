@@ -1,5 +1,5 @@
-import { spawn, execSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 
 const PID_FILE = join(process.env.HOME ?? "~", ".opencode", "telemetry-server.pid");
@@ -35,7 +35,7 @@ function getPid(): number | null {
 function savePid(pid: number): void {
   const dir = join(process.env.HOME ?? "~", ".opencode");
   if (!existsSync(dir)) {
-    execSync(`mkdir -p "${dir}"`);
+    mkdirSync(dir, { recursive: true });
   }
   writeFileSync(PID_FILE, String(pid));
 }

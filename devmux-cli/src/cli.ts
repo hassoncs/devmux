@@ -27,6 +27,13 @@ import {
 } from "./watch/index.js";
 import { diagnosePort, formatDiagnosis } from "./utils/diagnose.js";
 
+if (process.platform === "win32" && !process.env.WSL_DISTRO_NAME) {
+  console.error("❌ DevMux requires Windows Subsystem for Linux (WSL) on Windows");
+  console.error("   Install WSL: https://docs.microsoft.com/en-us/windows/wsl/install");
+  console.error("   Then run DevMux from within your WSL environment");
+  process.exit(1);
+}
+
 const ensure = defineCommand({
   meta: { name: "ensure", description: "Ensure a service is running (idempotent)" },
   args: {
@@ -215,7 +222,7 @@ const diagnose = defineCommand({
     service: { type: "positional", description: "Service name", required: true },
     json: { type: "boolean", description: "Output as JSON" },
   },
-  run({ args }) {
+  async run({ args }) {
     const config = loadConfig();
     const { getResolvedPort } = require("./config/loader.js");
 
@@ -226,7 +233,7 @@ const diagnose = defineCommand({
       process.exit(1);
     }
 
-    const result = diagnosePort(port, args.service);
+    const result = await diagnosePort(port, args.service);
 
     if (args.json) {
       console.log(JSON.stringify(result, null, 2));

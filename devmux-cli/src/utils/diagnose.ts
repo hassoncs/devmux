@@ -1,5 +1,5 @@
-import { execSync } from "node:child_process";
 import { networkInterfaces } from "node:os";
+import { getProcessOnPort } from "./process.js";
 
 export interface PortBinding {
   address: string;
@@ -43,52 +43,18 @@ function getAddressesToCheck(): string[] {
   return addresses;
 }
 
-function checkPortWithLsof(port: number, address: string): PortBinding | null {
-  try {
-    const output = execSync(
-      `lsof -i :${port} -P -n -sTCP:LISTEN 2>/dev/null || true`,
-      { encoding: "utf-8", shell: "/bin/bash" }
-    );
-    
-    if (!output.trim()) {
-      return { address, status: "free" };
-    }
-    
-    const lines = output.trim().split("\n");
-    for (let i = 1; i < lines.length; i++) {
-      const line = lines[i];
-      const parts = line.trim().split(/\s+/);
-      if (parts.length < 9) continue;
-      
-      const name = parts[0];
-      const pid = parseInt(parts[1], 10);
-      const bindAddress = parts[8];
-      
-      const normalizedAddress = address === "0.0.0.0" ? "*" : address;
-      const ipv6Wildcard = address === "0.0.0.0" ? "[::]" : null;
-      
-      if (bindAddress.startsWith(normalizedAddress) || 
-          (ipv6Wildcard && bindAddress.startsWith(ipv6Wildcard)) ||
-          bindAddress === `*:${port}` ||
-          bindAddress === `[::]:${port}`) {
-        
-        let cmd: string | undefined;
-        try {
-          cmd = execSync(`ps -p ${pid} -o command=`, { encoding: "utf-8" }).trim();
-        } catch {}
-        
-        return {
-          address,
-          status: "occupied",
-          process: { name, pid, cmd }
-        };
-      }
-    }
-    
-    return { address, status: "free" };
-  } catch {
-    return { address, status: "free" };
+async function checkPortStatus(port: number, address: string): Promise<PortBinding> {
+  const proc = await getProcessOnPort(port);
+  
+  if (proc) {
+    return {
+      address,
+      status: "occupied",
+      process: { name: proc.name, pid: proc.pid, cmd: proc.cmd }
+    };
   }
+  
+  return { address, status: "free" };
 }
 
 function detectBlockerType(processName: string, cmd?: string): { type: "vpn" | "docker" | "system" | "other"; name: string } | null {
@@ -168,12 +134,12 @@ function generateSuggestion(blockerType: "vpn" | "docker" | "system" | "other", 
   }
 }
 
-export function diagnosePort(port: number, serviceName: string): DiagnosisResult {
+export async function diagnosePort(port: number, serviceName: string): Promise<DiagnosisResult> {
   const addresses = getAddressesToCheck();
   const bindings: PortBinding[] = [];
-  
+
   for (const address of addresses) {
-    const binding = checkPortWithLsof(port, address);
+    const binding = await checkPortStatus(port, address);
     if (binding) {
       bindings.push(binding);
     }

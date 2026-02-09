@@ -1,8 +1,8 @@
-import { execSync } from "node:child_process";
 import type { ResolvedConfig, ServiceStatus, HealthCheckType } from "../config/types.js";
 import { getSessionName, getServiceCwd, getResolvedPort } from "../config/loader.js";
 import * as tmux from "../tmux/driver.js";
 import { checkHealth, getHealthPort } from "../health/checkers.js";
+import { getProcessesOnPort, killProcess } from "../utils/process.js";
 
 export interface EnsureResult {
   serviceName: string;
@@ -122,11 +122,11 @@ export async function getAllStatus(config: ResolvedConfig): Promise<ServiceStatu
   return statuses;
 }
 
-export function stopService(
+export async function stopService(
   config: ResolvedConfig,
   serviceName: string,
   options: { killPorts?: boolean; quiet?: boolean } = {}
-): void {
+): Promise<void> {
   const service = config.services[serviceName];
   if (!service) {
     throw new Error(`Unknown service: ${serviceName}`);
@@ -145,7 +145,7 @@ export function stopService(
   if (options.killPorts) {
     const resolvedPort = getResolvedPort(config, serviceName);
     const ports: number[] = [];
-    
+
     if (resolvedPort) ports.push(resolvedPort);
     if (service.stopPorts) {
       for (const p of service.stopPorts) {
@@ -154,25 +154,23 @@ export function stopService(
     }
 
     for (const port of [...new Set(ports)]) {
-      try {
-        const pids = execSync(`lsof -ti :${port}`, { encoding: "utf-8" }).trim();
-        if (pids) {
-          execSync(`kill -9 ${pids.split("\n").join(" ")}`, { stdio: "pipe" });
-          log(`   └─ Killed process(es) on port ${port}`);
-        }
-      } catch {}
+      const processes = await getProcessesOnPort(port);
+      for (const proc of processes) {
+        await killProcess(proc.pid);
+        log(`   └─ Killed process ${proc.name} (PID ${proc.pid}) on port ${port}`);
+      }
     }
   }
 
   log(`✅ ${serviceName} stopped`);
 }
 
-export function stopAllServices(
+export async function stopAllServices(
   config: ResolvedConfig,
   options: { killPorts?: boolean; quiet?: boolean } = {}
-): void {
+): Promise<void> {
   for (const serviceName of Object.keys(config.services)) {
-    stopService(config, serviceName, options);
+    await stopService(config, serviceName, options);
   }
 }
 

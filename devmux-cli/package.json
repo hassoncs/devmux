@@ -45,7 +45,11 @@
     "node": ">=18"
   },
   "dependencies": {
-    "citty": "^0.1.6"
+    "citty": "^0.1.6",
+    "execa": "^9.6.1",
+    "fkill": "^10.0.3",
+    "pid-port": "^2.0.1",
+    "ps-list": "^9.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
