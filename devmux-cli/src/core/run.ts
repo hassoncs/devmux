@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import type { Server } from "node:http";
 import type { ResolvedConfig } from "../config/types.js";
 import { getSessionName } from "../config/loader.js";
 import { ensureService, stopService, type EnsureResult } from "./service.js";
@@ -8,6 +9,17 @@ export interface RunOptions {
   services: string[];
   stopOnExit?: boolean;
   quiet?: boolean;
+  dashboard?: boolean;
+}
+
+function resolveDashboardConfig(config: ResolvedConfig, override?: boolean): { enabled: boolean; port: number } {
+  if (override === false) return { enabled: false, port: 9000 };
+
+  const opt = config.defaults?.dashboard;
+  if (override === true || opt === true) return { enabled: true, port: 9000 };
+  if (opt && typeof opt === "object") return { enabled: true, port: opt.port ?? 9000 };
+
+  return { enabled: false, port: 9000 };
 }
 
 export async function runWithServices(
@@ -19,6 +31,7 @@ export async function runWithServices(
   const log = quiet ? () => {} : console.log;
 
   const startedByUs: EnsureResult[] = [];
+  let dashboardServer: Server | undefined;
 
   for (const serviceName of services) {
     const service = config.services[serviceName];
@@ -41,9 +54,24 @@ export async function runWithServices(
     }
   }
 
+  const dashboardConfig = resolveDashboardConfig(config, options.dashboard);
+  if (dashboardConfig.enabled) {
+    try {
+      const { startDashboard } = await import("../dashboard/index.js");
+      dashboardServer = startDashboard({ port: dashboardConfig.port, open: true });
+    } catch (err) {
+      log(`⚠️  Dashboard failed to start: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+
   log("");
 
   const cleanup = () => {
+    if (dashboardServer) {
+      dashboardServer.close();
+      dashboardServer = undefined;
+    }
+
     if (stopOnExit && startedByUs.length > 0) {
       log("");
       log("🧹 Cleaning up services we started...");

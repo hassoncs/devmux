@@ -26,3 +26,4 @@ export { discoverFromTurbo, formatDiscoveredConfig } from "./discovery/turbo.js"
 export * as tmux from "./tmux/driver.js";
 export * as health from "./health/checkers.js";
 export * as watch from "./watch/index.js";
+export * as dashboard from "./dashboard/index.js";

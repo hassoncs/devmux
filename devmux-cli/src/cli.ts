@@ -150,6 +150,7 @@ const run = defineCommand({
   args: {
     with: { type: "string", description: "Comma-separated services to ensure", required: true },
     "no-stop": { type: "boolean", description: "Don't stop services on exit" },
+    "no-dashboard": { type: "boolean", description: "Skip auto-launching the dashboard" },
   },
   async run({ args }) {
     const config = loadConfig();
@@ -164,6 +165,7 @@ const run = defineCommand({
     const exitCode = await runWithServices(config, command, {
       services,
       stopOnExit: !args["no-stop"],
+      dashboard: args["no-dashboard"] ? false : undefined,
     });
 
     process.exit(exitCode);
@@ -444,6 +446,21 @@ const telemetry = defineCommand({
   },
 });
 
+const dashboard = defineCommand({
+  meta: { name: "dashboard", description: "Launch web dashboard for service monitoring (experimental)" },
+  args: {
+    port: { type: "string", description: "Port to listen on (default: 9000)" },
+    "no-open": { type: "boolean", description: "Don't open browser automatically" },
+  },
+  async run({ args }) {
+    const { startDashboard } = await import("./dashboard/index.js");
+    startDashboard({
+      port: args.port ? parseInt(args.port) : undefined,
+      open: !args["no-open"],
+    });
+  },
+});
+
 const main = defineCommand({
   meta: {
     name: "devmux",
@@ -463,6 +480,7 @@ const main = defineCommand({
     diagnose,
     watch,
     telemetry,
+    dashboard,
     "install-skill": installSkill,
   },
 });

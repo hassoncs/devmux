@@ -44,6 +44,7 @@ export interface DevMuxConfig {
   defaults?: {
     startupTimeoutSeconds?: number;
     remainOnExit?: boolean;
+    dashboard?: boolean | { port?: number };
   };
   watch?: GlobalWatchConfig;
   services: Record<string, ServiceDefinition>;
