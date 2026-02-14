@@ -24,7 +24,7 @@ export function renderDashboard(data: DashboardData): string {
   <style>
     :root {
       --bg: #111;
-      --sidebar-bg: #1a1a1a;
+      --bar-bg: #1a1a1a;
       --text: #ccc;
       --text-muted: #666;
       --border: #222;
@@ -42,50 +42,9 @@ export function renderDashboard(data: DashboardData): string {
       font: 11px/1 -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
       height: 100vh;
       display: flex;
+      flex-direction: column;
       overflow: hidden;
     }
-
-    aside {
-      width: 140px;
-      background: var(--sidebar-bg);
-      border-right: 1px solid var(--border);
-      display: flex;
-      flex-direction: column;
-      flex-shrink: 0;
-    }
-
-    .sidebar-header {
-      padding: 6px 8px;
-      border-bottom: 1px solid var(--border);
-      font-weight: 600;
-      font-size: 10px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: var(--text-muted);
-    }
-
-    .sidebar-services { flex: 1; overflow-y: auto; }
-
-    .service-row {
-      padding: 5px 8px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      border-bottom: 1px solid var(--border);
-      transition: background 100ms;
-    }
-
-    .service-row:hover { background: #222; }
-    .service-row.active { background: var(--accent); color: #fff; }
-
-    .status-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
-    .status-dot.healthy { background: var(--success); }
-    .status-dot.unhealthy { background: var(--error); }
-    .status-dot.no-check { background: var(--muted); }
-
-    .service-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .service-row.active .service-name { font-weight: 500; }
 
     .content-area { flex: 1; position: relative; background: #fff; }
 
@@ -110,19 +69,46 @@ export function renderDashboard(data: DashboardData): string {
       font-size: 12px;
     }
 
+    nav {
+      height: 28px;
+      background: var(--bar-bg);
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: stretch;
+      flex-shrink: 0;
+      overflow-x: auto;
+    }
+
+    .tab {
+      padding: 0 10px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      border-right: 1px solid var(--border);
+      transition: background 100ms;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .tab:hover { background: #222; }
+    .tab.active { background: var(--accent); color: #fff; }
+
+    .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+    .dot.healthy { background: var(--success); }
+    .dot.unhealthy { background: var(--error); }
+    .dot.no-check { background: var(--muted); }
+
     .hidden { display: none !important; }
   </style>
 </head>
 <body>
 
-  <aside>
-    <div class="sidebar-header">${data.project}</div>
-    <div id="sidebar" class="sidebar-services"></div>
-  </aside>
-
   <div id="content" class="content-area">
     <div id="empty-state" class="empty-state">Select a service</div>
   </div>
+
+  <nav id="bar"></nav>
 
   <script>
     window.__DEVMUX__ = ${JSON.stringify(data)};
@@ -135,12 +121,12 @@ export function renderDashboard(data: DashboardData): string {
       const services = data.services || [];
       const iframeCache = new Map();
 
-      const sidebar = document.getElementById('sidebar');
+      const bar = document.getElementById('bar');
       const content = document.getElementById('content');
       const emptyState = document.getElementById('empty-state');
 
       function init() {
-        renderSidebar();
+        renderBar();
         if (services.length > 0) {
           const first = services.find(s => s.resolvedPort || s.port) || services[0];
           selectService(first.name);
@@ -148,19 +134,18 @@ export function renderDashboard(data: DashboardData): string {
         startPolling();
       }
 
-      function renderSidebar() {
-        sidebar.innerHTML = '';
+      function renderBar() {
+        bar.innerHTML = '';
         services.forEach(s => {
-          const row = document.createElement('div');
-          row.className = 'service-row' + (selected === s.name ? ' active' : '');
-          row.onclick = () => selectService(s.name);
+          const tab = document.createElement('div');
+          tab.className = 'tab' + (selected === s.name ? ' active' : '');
+          tab.onclick = () => selectService(s.name);
 
           let dotClass = 'no-check';
           if (s.hasHealthCheck) dotClass = s.healthy ? 'healthy' : 'unhealthy';
 
-          row.innerHTML = '<div class="status-dot ' + dotClass + '"></div>' +
-                          '<div class="service-name">' + s.name + '</div>';
-          sidebar.appendChild(row);
+          tab.innerHTML = '<div class="dot ' + dotClass + '"></div>' + s.name;
+          bar.appendChild(tab);
         });
       }
 
@@ -169,8 +154,8 @@ export function renderDashboard(data: DashboardData): string {
         const service = services.find(s => s.name === name);
         if (!service) return;
 
-        sidebar.querySelectorAll('.service-row').forEach((row, i) => {
-          row.classList.toggle('active', services[i].name === name);
+        bar.querySelectorAll('.tab').forEach((tab, i) => {
+          tab.classList.toggle('active', services[i].name === name);
         });
 
         iframeCache.forEach(iframe => iframe.classList.remove('active'));
@@ -203,10 +188,10 @@ export function renderDashboard(data: DashboardData): string {
             const newData = await res.json();
             services.length = 0;
             services.push(...newData.services);
-            renderSidebar();
+            renderBar();
             if (selected) {
-              sidebar.querySelectorAll('.service-row').forEach((row, i) => {
-                row.classList.toggle('active', services[i].name === selected);
+              bar.querySelectorAll('.tab').forEach((tab, i) => {
+                tab.classList.toggle('active', services[i].name === selected);
               });
             }
           } catch (e) {
