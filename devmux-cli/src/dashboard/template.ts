@@ -77,10 +77,11 @@ export function renderDashboard(data: DashboardData): string {
       align-items: stretch;
       flex-shrink: 0;
       overflow-x: auto;
+      padding: 0 8px;
     }
 
     .tab {
-      padding: 0 10px;
+      padding: 0 8px;
       cursor: pointer;
       display: flex;
       align-items: center;
