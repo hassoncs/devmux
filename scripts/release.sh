@@ -50,16 +50,26 @@ echo ""
 (
     cd devmux-cli
     echo "📦 Publishing to npm..."
-    npm publish --otp="$OTP" 2>&1 | sed 's/^/   [npm] /'
-    echo "✓ Published @chriscode/devmux@$VERSION to npm"
+    set -o pipefail
+    if npm publish --otp="$OTP" 2>&1 | sed 's/^/   [npm] /'; then
+        echo "✓ Published @chriscode/devmux@$VERSION to npm"
+    else
+        echo "❌ npm publish failed"
+        exit 1
+    fi
 ) &
 NPM_PID=$!
 
 (
     cd landing
     echo "🌐 Deploying to Cloudflare Pages..."
-    pnpm deploy 2>&1 | sed 's/^/   [pages] /'
-    echo "✓ Landing page deployed"
+    set -o pipefail
+    if pnpm deploy 2>&1 | sed 's/^/   [pages] /'; then
+        echo "✓ Landing page deployed"
+    else
+        echo "❌ Pages deploy failed"
+        exit 1
+    fi
 ) &
 PAGES_PID=$!
 

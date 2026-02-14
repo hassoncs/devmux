@@ -4,6 +4,7 @@ import type { ResolvedConfig } from "../config/types.js";
 import { getSessionName } from "../config/loader.js";
 import { ensureService, stopService, type EnsureResult } from "./service.js";
 import { checkHealth } from "../health/checkers.js";
+import { saveDashboardPid, clearDashboardPid } from "../dashboard/server-manager.js";
 
 export interface RunOptions {
   services: string[];
@@ -32,6 +33,7 @@ export async function runWithServices(
 
   const startedByUs: EnsureResult[] = [];
   let dashboardServer: Server | undefined;
+  let dashboardTracked = false;
 
   for (const serviceName of services) {
     const service = config.services[serviceName];
@@ -58,7 +60,10 @@ export async function runWithServices(
   if (dashboardConfig.enabled) {
     try {
       const { startDashboard } = await import("../dashboard/index.js");
-      dashboardServer = startDashboard({ port: dashboardConfig.port, open: true });
+      const result = await startDashboard({ port: dashboardConfig.port, open: true });
+      dashboardServer = result.server;
+      saveDashboardPid(process.pid, result.port);
+      dashboardTracked = true;
     } catch (err) {
       log(`⚠️  Dashboard failed to start: ${err instanceof Error ? err.message : err}`);
     }
@@ -70,6 +75,10 @@ export async function runWithServices(
     if (dashboardServer) {
       dashboardServer.close();
       dashboardServer = undefined;
+    }
+    if (dashboardTracked) {
+      clearDashboardPid();
+      dashboardTracked = false;
     }
 
     if (stopOnExit && startedByUs.length > 0) {

@@ -56,9 +56,15 @@ const status = defineCommand({
   async run({ args }) {
     const config = loadConfig();
     const statuses = await getAllStatus(config);
+    const { getDashboardStatus } = await import("./dashboard/index.js");
+    const dashStatus = getDashboardStatus();
 
     if (args.json) {
-      console.log(JSON.stringify({ instanceId: config.instanceId || null, services: statuses }, null, 2));
+      console.log(JSON.stringify({
+        instanceId: config.instanceId || null,
+        services: statuses,
+        dashboard: dashStatus,
+      }, null, 2));
       return;
     }
 
@@ -83,6 +89,14 @@ const status = defineCommand({
       }
       console.log("");
     }
+
+    const dashIcon = dashStatus.running ? "✅" : "⚫";
+    const dashInfo = dashStatus.running ? `Running (port ${dashStatus.port})` : "Not running";
+    console.log(`${dashIcon} dashboard: ${dashInfo}`);
+    if (dashStatus.running) {
+      console.log(`   └─ http://localhost:${dashStatus.port}`);
+    }
+    console.log("");
   },
 });
 
@@ -92,12 +106,16 @@ const stop = defineCommand({
     service: { type: "positional", description: "Service name or 'all'" },
     force: { type: "boolean", description: "Also kill processes on ports" },
   },
-  run({ args }) {
+  async run({ args }) {
     const config = loadConfig();
     const serviceName = args.service ?? "all";
 
     if (serviceName === "all") {
       stopAllServices(config, { killPorts: args.force });
+      const { getDashboardStatus, stopDashboardServer } = await import("./dashboard/index.js");
+      if (getDashboardStatus().running) {
+        stopDashboardServer();
+      }
     } else {
       stopService(config, serviceName, { killPorts: args.force });
     }
@@ -446,18 +464,71 @@ const telemetry = defineCommand({
   },
 });
 
-const dashboard = defineCommand({
-  meta: { name: "dashboard", description: "Launch web dashboard for service monitoring (experimental)" },
+const dashboardStart = defineCommand({
+  meta: { name: "start", description: "Start the dashboard server" },
   args: {
     port: { type: "string", description: "Port to listen on (default: 9000)" },
     "no-open": { type: "boolean", description: "Don't open browser automatically" },
   },
   async run({ args }) {
-    const { startDashboard } = await import("./dashboard/index.js");
-    startDashboard({
+    const { getDashboardStatus, startDashboard, saveDashboardPid, clearDashboardPid } = await import("./dashboard/index.js");
+    const existing = getDashboardStatus();
+    if (existing.running) {
+      console.log(`Dashboard already running (PID: ${existing.pid}, port: ${existing.port})`);
+      return;
+    }
+    const result = await startDashboard({
       port: args.port ? parseInt(args.port) : undefined,
       open: !args["no-open"],
     });
+    saveDashboardPid(process.pid, result.port);
+    const cleanupDashboard = () => {
+      result.server.close();
+      clearDashboardPid();
+    };
+    process.on("SIGINT", () => { cleanupDashboard(); process.exit(0); });
+    process.on("SIGTERM", () => { cleanupDashboard(); process.exit(0); });
+  },
+});
+
+const dashboardStop = defineCommand({
+  meta: { name: "stop", description: "Stop the dashboard server" },
+  async run() {
+    const { stopDashboardServer } = await import("./dashboard/index.js");
+    stopDashboardServer();
+  },
+});
+
+const dashboardStatus = defineCommand({
+  meta: { name: "status", description: "Show dashboard server status" },
+  args: {
+    json: { type: "boolean", description: "Output as JSON" },
+  },
+  async run({ args }) {
+    const { getDashboardStatus } = await import("./dashboard/index.js");
+    const status = getDashboardStatus();
+
+    if (args.json) {
+      console.log(JSON.stringify(status, null, 2));
+      return;
+    }
+
+    if (status.running) {
+      console.log(`Dashboard: Running (PID: ${status.pid})`);
+      console.log(`  URL: http://localhost:${status.port}`);
+    } else {
+      console.log("Dashboard: Not running");
+      console.log("  Start with: devmux dashboard start");
+    }
+  },
+});
+
+const dashboard = defineCommand({
+  meta: { name: "dashboard", description: "Manage web dashboard for service monitoring" },
+  subCommands: {
+    start: dashboardStart,
+    stop: dashboardStop,
+    status: dashboardStatus,
   },
 });
 

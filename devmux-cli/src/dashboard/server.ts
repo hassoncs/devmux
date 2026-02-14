@@ -57,11 +57,44 @@ export interface DashboardOptions {
 	open?: boolean;
 }
 
-export function startDashboard(options: DashboardOptions = {}): Server {
-	const port = options.port ?? 9000;
+export interface DashboardResult {
+	server: Server;
+	port: number;
+}
+
+const MAX_PORT_RETRIES = 10;
+
+function tryListen(server: Server, port: number, maxRetries: number): Promise<number> {
+	return new Promise((resolve, reject) => {
+		let attempt = 0;
+
+		const onError = (err: NodeJS.ErrnoException) => {
+			if (err.code === "EADDRINUSE" && attempt < maxRetries) {
+				attempt++;
+				server.listen(port + attempt);
+			} else {
+				server.removeListener("error", onError);
+				reject(err);
+			}
+		};
+
+		server.on("error", onError);
+		server.once("listening", () => {
+			server.removeListener("error", onError);
+			resolve(port + attempt);
+		});
+
+		server.listen(port);
+	});
+}
+
+export async function startDashboard(options: DashboardOptions = {}): Promise<DashboardResult> {
+	const basePort = options.port ?? 9000;
 	const shouldOpen = options.open ?? true;
 	const config = loadConfig();
 	const configPath = getConfigPath(config);
+
+	let actualPort = basePort;
 
 	const server = createServer(async (req, res) => {
 		if (req.url === "/api/status") {
@@ -98,7 +131,7 @@ export function startDashboard(options: DashboardOptions = {}): Server {
 					project: config.project,
 					instanceId: config.instanceId || "",
 					configPath,
-					dashboardPort: port,
+					dashboardPort: actualPort,
 					services,
 				};
 				res.writeHead(200, {
@@ -117,18 +150,21 @@ export function startDashboard(options: DashboardOptions = {}): Server {
 		res.end("Not Found");
 	});
 
-	server.listen(port, () => {
-		const url = `http://localhost:${port}`;
-		console.log(`devmux dashboard running at ${url}`);
-		console.log(`  Project: ${config.project}`);
-		console.log(`  Config:  ${configPath}`);
-		console.log("");
-		console.log("Press Ctrl+C to stop.");
+	actualPort = await tryListen(server, basePort, MAX_PORT_RETRIES);
 
-		if (shouldOpen) {
-			openBrowser(url);
-		}
-	});
+	const url = `http://localhost:${actualPort}`;
+	console.log(`devmux dashboard running at ${url}`);
+	if (actualPort !== basePort) {
+		console.log(`  (port ${basePort} was in use, using ${actualPort})`);
+	}
+	console.log(`  Project: ${config.project}`);
+	console.log(`  Config:  ${configPath}`);
+	console.log("");
+	console.log("Press Ctrl+C to stop.");
 
-	return server;
+	if (shouldOpen) {
+		openBrowser(url);
+	}
+
+	return { server, port: actualPort };
 }
