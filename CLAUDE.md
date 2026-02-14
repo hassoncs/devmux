@@ -89,77 +89,76 @@ devmux-cli/src/
 - **Idempotent operations** - `devmux ensure` is safe to call multiple times
 - **Error watching** - Uses `tmux pipe-pane` to capture errors from service output
 
-## Release Procedures
+## Release Process
 
-### Version Bumping
+### Fully Automatic Releases
 
-When releasing a new version:
+**Every push to main triggers a release.** No manual version bumping or publishing required.
 
-1. **Determine version bump type:**
-   - `patch` → Bug fixes, small changes (1.0.0 → 1.0.1)
-   - `minor` → New features, backwards compatible (1.0.0 → 1.1.0)
-   - `major` → Breaking changes (1.0.0 → 2.0.0)
+The CI workflow (`.github/workflows/release.yml`):
+1. Runs build + tests + type-check
+2. Analyzes commits since last npm version using conventional commit messages
+3. Determines version bump automatically
+4. Updates `package.json`, publishes to npm (OIDC trusted publishing)
+5. Creates git tag and GitHub Release with auto-generated changelog
 
-2. **Run the release script:**
-   ```bash
-   ./scripts/release.sh --version 1.0.1
-   ```
+### Version Bump Rules
 
-   This will:
-   - Build all packages
-   - Run tests (if available)
-   - Generate changelog
-   - Prompt for npm OTP
-   - Deploy in parallel: npm publish + Cloudflare Pages
+| Commits since last release | Bump | Example |
+|---------------------------|------|---------|
+| Any with `!` (breaking) | major | 1.3.0 → 2.0.0 |
+| Any `feat:` | minor | 1.3.0 → 1.4.0 |
+| Only `fix:`, `docs:`, `chore:`, etc. | patch | 1.3.0 → 1.3.1 |
+| No conventional commits | skip | No release |
 
-3. **Manual version bump (if needed):**
-   ```bash
-   jq '.version = "1.0.1"' devmux-cli/package.json > tmp.json && mv tmp.json devmux-cli/package.json
-   git add devmux-cli/package.json
-   git commit -m "chore: bump version to 1.0.1"
-   ```
+### What Agents Do
+
+Just commit with conventional commit messages and push. That's it.
+
+```bash
+git commit -m "feat(cli): add new command"
+git push origin main
+# → CI auto-releases as next minor version
+```
+
+### IMPORTANT: Always Pull Before Push
+
+Every push to main triggers CI which may bump `package.json` and create a commit. Always pull before pushing:
+
+```bash
+git pull --rebase origin main  # Get CI's version bump commits
+git push origin main
+```
 
 ### Commit Message Conventions
 
 Use [Conventional Commits](https://www.conventionalcommits.org/):
 
-| Type | Description | Changelog Section |
-|------|-------------|-------------------|
-| `feat` | New feature | Added |
-| `fix` | Bug fix | Fixed |
-| `docs` | Documentation | Documentation |
-| `style` | Formatting | Internal |
-| `refactor` | Code restructuring | Changed |
-| `test` | Tests | Tests |
-| `chore` | Maintenance | Internal |
+| Type | Description | Version Bump |
+|------|-------------|--------------|
+| `feat` | New feature | minor |
+| `fix` | Bug fix | patch |
+| `docs` | Documentation | patch |
+| `refactor` | Code restructuring | patch |
+| `test` | Tests | patch |
+| `chore` | Maintenance | patch |
+| `ci` | CI/CD changes | patch |
 
 Examples:
 ```
 feat(cli): add new command devmux attach
 fix(tmux): resolve session detection issue
-docs(readme): update installation instructions
+feat(dashboard)!: remove legacy sidebar layout
+
+BREAKING CHANGE: The sidebar layout has been removed.
 ```
 
-### Before Creating a Release
+### Manual Release (fallback)
 
-1. ✅ All tests pass: `pnpm test`
-2. ✅ Build succeeds: `pnpm build`
-3. ✅ Changelog generated and reviewed
-4. ✅ Version in package.json matches intended release
-5. ✅ No TODO comments in code
-6. ✅ README updated if API changed
-
-### Release Checklist
-
-- [ ] Version bumped in `devmux-cli/package.json`
-- [ ] Changelog generated: `./scripts/changelog.sh X.Y.Z`
-- [ ] All tests passing
-- [ ] Build succeeds
-- [ ] Commit with message: `chore(release): X.Y.Z`
-- [ ] Tag created: `git tag vX.Y.Z`
-- [ ] npm publish successful
-- [ ] Landing page deployed to Cloudflare Pages
-- [ ] GitHub release created
+If CI is unavailable, use the legacy release script:
+```bash
+./scripts/release.sh
+```
 
 ## Testing
 
