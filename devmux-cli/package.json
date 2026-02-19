@@ -1,6 +1,6 @@
 {
   "name": "@chriscode/devmux",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "tmux-based service management for monorepos with human-agent shared awareness",
   "type": "module",
   "bin": {
