@@ -1,17 +1,22 @@
-import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync, unlinkSync, mkdirSync, openSync, closeSync } from "node:fs";
+import { join, dirname } from "node:path";
 import { homedir } from "node:os";
-import { createServer } from "node:net";
-import { createProxyServer, RouteStore, parseHostname, formatUrl } from "portless";
+import { createServer, createConnection } from "node:net";
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { RouteStore, parseHostname, formatUrl } from "portless";
 import type { ResolvedConfig } from "../config/types.js";
 
 const DEFAULT_PROXY_PORT = 1355;
 const MIN_AUTO_PORT = 4000;
 const MAX_AUTO_PORT = 4999;
 const RANDOM_PORT_ATTEMPTS = 50;
+const DAEMON_START_TIMEOUT_MS = 5000;
+const DAEMON_POLL_INTERVAL_MS = 150;
 
 function getStateDir(proxyPort: number): string {
-	return join(homedir(), ".devmux-proxy", String(proxyPort));
+	if (process.env.PORTLESS_STATE_DIR) return process.env.PORTLESS_STATE_DIR;
+	return proxyPort < 1024 ? "/tmp/portless" : join(homedir(), ".portless");
 }
 
 function getPidPath(stateDir: string): string {
@@ -107,88 +112,54 @@ export function getProxyStatus(config: ResolvedConfig): {
 	}
 }
 
-export function startProxyDaemon(config: ResolvedConfig): void {
-	const status = getProxyStatus(config);
-	if (status.running) return;
+function isPortListening(port: number): Promise<boolean> {
+	return new Promise((resolve) => {
+		const socket = createConnection({ port, host: "127.0.0.1" });
+		socket.setTimeout(500);
+		socket.on("connect", () => { socket.destroy(); resolve(true); });
+		socket.on("timeout", () => { socket.destroy(); resolve(false); });
+		socket.on("error", () => { socket.destroy(); resolve(false); });
+	});
+}
 
+function getDaemonScript(): string {
+	const thisFile = fileURLToPath(import.meta.url);
+	return join(dirname(thisFile), "proxy", "daemon.js");
+}
+
+export async function startProxyDaemon(config: ResolvedConfig): Promise<void> {
 	const proxyPort = getProxyPort(config);
+	if (await isPortListening(proxyPort)) return;
+
 	const stateDir = getStateDir(proxyPort);
 	ensureStateDir(stateDir);
 
-	const store = new RouteStore(stateDir);
-	store.ensureDir();
-
-	const routesPath = store.getRoutesPath();
-	if (!existsSync(routesPath)) {
-		writeFileSync(routesPath, "[]");
+	const logPath = join(stateDir, "proxy.log");
+	const logFd = openSync(logPath, "a");
+	try {
+		const child = spawn(process.execPath, [getDaemonScript(), String(proxyPort), stateDir], {
+			detached: true,
+			stdio: ["ignore", logFd, logFd],
+		});
+		child.unref();
+	} finally {
+		closeSync(logFd);
 	}
 
-	const server = createProxyServer({
-		getRoutes: () => store.loadRoutes(),
-		proxyPort,
-	});
+	const deadline = Date.now() + DAEMON_START_TIMEOUT_MS;
+	while (Date.now() < deadline) {
+		if (await isPortListening(proxyPort)) return;
+		await new Promise((r) => setTimeout(r, DAEMON_POLL_INTERVAL_MS));
+	}
 
-	server.listen(proxyPort, () => {
-		writeFileSync(getPidPath(stateDir), process.pid.toString());
-		writeFileSync(getPortFilePath(stateDir), proxyPort.toString());
-		server.unref();
-	});
-
-	process.on("SIGINT", () => { cleanup(stateDir, server); process.exit(0); });
-	process.on("SIGTERM", () => { cleanup(stateDir, server); process.exit(0); });
-}
-
-function cleanup(stateDir: string, server: ReturnType<typeof createProxyServer>): void {
-	try { unlinkSync(getPidPath(stateDir)); } catch {}
-	try { unlinkSync(getPortFilePath(stateDir)); } catch {}
-	server.close();
+	throw new Error(
+		`Proxy failed to start on port ${proxyPort}. Check logs: ${logPath}`,
+	);
 }
 
 export async function ensureProxyRunning(config: ResolvedConfig): Promise<void> {
 	if (!isProxyEnabled(config)) return;
-
-	const status = getProxyStatus(config);
-	if (status.running) return;
-
-	const proxyPort = getProxyPort(config);
-	const stateDir = getStateDir(proxyPort);
-	ensureStateDir(stateDir);
-
-	const store = new RouteStore(stateDir);
-	store.ensureDir();
-
-	const routesPath = store.getRoutesPath();
-	if (!existsSync(routesPath)) {
-		writeFileSync(routesPath, "[]");
-	}
-
-	const server = createProxyServer({
-		getRoutes: () => store.loadRoutes(),
-		proxyPort,
-	});
-
-	return new Promise((resolve, reject) => {
-		server.on("error", (err: NodeJS.ErrnoException) => {
-			if (err.code === "EADDRINUSE") {
-				resolve();
-				return;
-			}
-			reject(err);
-		});
-
-		server.listen(proxyPort, () => {
-			writeFileSync(getPidPath(stateDir), process.pid.toString());
-			writeFileSync(getPortFilePath(stateDir), proxyPort.toString());
-
-			process.on("exit", () => {
-				try { unlinkSync(getPidPath(stateDir)); } catch {}
-				try { unlinkSync(getPortFilePath(stateDir)); } catch {}
-			});
-
-			server.unref();
-			resolve();
-		});
-	});
+	await startProxyDaemon(config);
 }
 
 export function stopProxy(config: ResolvedConfig): void {

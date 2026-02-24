@@ -545,12 +545,11 @@ const proxyStart = defineCommand({
   meta: { name: "start", description: "Start the portless proxy server" },
   async run() {
     const config = loadConfig();
+    await startProxyDaemon(config);
     const status = getProxyStatus(config);
     if (status.running) {
-      console.log(`Proxy already running (PID: ${status.pid}, port: ${status.port})`);
-      return;
+      console.log(`Proxy running (PID: ${status.pid}, port: ${status.port})`);
     }
-    startProxyDaemon(config);
   },
 });
 
