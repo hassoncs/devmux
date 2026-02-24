@@ -26,6 +26,12 @@ import {
   clearQueue,
 } from "./watch/index.js";
 import { diagnosePort, formatDiagnosis } from "./utils/diagnose.js";
+import {
+  getProxyStatus,
+  startProxyDaemon,
+  stopProxy,
+  listProxyRoutes,
+} from "./proxy/manager.js";
 
 if (process.platform === "win32" && !process.env.WSL_DISTRO_NAME) {
   console.error("❌ DevMux requires Windows Subsystem for Linux (WSL) on Windows");
@@ -86,6 +92,9 @@ const status = defineCommand({
         console.log(`   └─ tmux: ${s.tmuxSession}`);
       } else if (s.healthy) {
         console.log(`   └─ (running outside tmux)`);
+      }
+      if (s.proxyUrl) {
+        console.log(`   └─ ${s.proxyUrl}`);
       }
       console.log("");
     }
@@ -532,6 +541,61 @@ const dashboard = defineCommand({
   },
 });
 
+const proxyStart = defineCommand({
+  meta: { name: "start", description: "Start the portless proxy server" },
+  async run() {
+    const config = loadConfig();
+    const status = getProxyStatus(config);
+    if (status.running) {
+      console.log(`Proxy already running (PID: ${status.pid}, port: ${status.port})`);
+      return;
+    }
+    startProxyDaemon(config);
+  },
+});
+
+const proxyStop = defineCommand({
+  meta: { name: "stop", description: "Stop the portless proxy server" },
+  run() {
+    const config = loadConfig();
+    stopProxy(config);
+  },
+});
+
+const proxyStatus = defineCommand({
+  meta: { name: "status", description: "Show proxy status and routes" },
+  args: {
+    json: { type: "boolean", description: "Output as JSON" },
+  },
+  run({ args }) {
+    const config = loadConfig();
+    const status = getProxyStatus(config);
+
+    if (args.json) {
+      console.log(JSON.stringify(status, null, 2));
+      return;
+    }
+
+    if (status.running) {
+      console.log(`Proxy: Running (PID: ${status.pid})`);
+      console.log(`  Port: ${status.port}`);
+      listProxyRoutes(config);
+    } else {
+      console.log("Proxy: Not running");
+      console.log("  Start with: devmux proxy start");
+    }
+  },
+});
+
+const proxy = defineCommand({
+  meta: { name: "proxy", description: "Manage portless proxy for .localhost URLs" },
+  subCommands: {
+    start: proxyStart,
+    stop: proxyStop,
+    status: proxyStatus,
+  },
+});
+
 const main = defineCommand({
   meta: {
     name: "devmux",
@@ -552,6 +616,7 @@ const main = defineCommand({
     watch,
     telemetry,
     dashboard,
+    proxy,
     "install-skill": installSkill,
   },
 });

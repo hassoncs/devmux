@@ -3,6 +3,14 @@ import { getSessionName, getServiceCwd, getResolvedPort } from "../config/loader
 import * as tmux from "../tmux/driver.js";
 import { checkHealth, getHealthPort } from "../health/checkers.js";
 import { getProcessesOnPort, killProcess } from "../utils/process.js";
+import {
+  isServiceProxied,
+  getServiceProxyUrl,
+  registerRoute,
+  deregisterRoute,
+  ensureProxyRunning,
+  findFreePort,
+} from "../proxy/manager.js";
 
 export interface EnsureResult {
   serviceName: string;
@@ -41,12 +49,24 @@ export async function ensureService(
   const cwd = getServiceCwd(config, serviceName);
   const timeout = options.timeout ?? config.defaults?.startupTimeoutSeconds ?? 30;
   const log = options.quiet ? () => {} : console.log;
-  
-  const resolvedPort = getResolvedPort(config, serviceName);
-  const resolvedHealth = resolveHealthCheck(service.health, resolvedPort);
-  const env = buildServiceEnv(config, serviceName, service.env);
+  const proxied = isServiceProxied(config, serviceName);
 
-  const isHealthy = await checkHealth(resolvedHealth, sessionName);
+  let resolvedPort = getResolvedPort(config, serviceName);
+  if (resolvedPort === undefined && proxied) {
+    resolvedPort = await findFreePort();
+  }
+
+  const resolvedHealth = resolveHealthCheck(service.health, resolvedPort);
+  const autoHealth = resolvedPort && !service.health
+    ? { type: "port" as const, port: resolvedPort }
+    : resolvedHealth;
+  const env = buildServiceEnv(config, serviceName, service.env, resolvedPort);
+
+  if (proxied) {
+    await ensureProxyRunning(config);
+  }
+
+  const isHealthy = await checkHealth(autoHealth, sessionName);
   if (isHealthy) {
     const hasTmux = tmux.hasSession(sessionName);
     log(`✅ ${serviceName} already running`);
@@ -57,6 +77,11 @@ export async function ensureService(
     }
     if (resolvedPort && config.instanceId) {
       log(`   └─ port: ${resolvedPort} (instance: ${config.instanceId})`);
+    }
+    if (proxied && resolvedPort) {
+      const panePid = getPanePid(sessionName);
+      registerRoute(config, serviceName, resolvedPort, panePid ?? process.pid);
+      log(`   └─ ${getServiceProxyUrl(config, serviceName)}`);
     }
     return { serviceName, startedByUs: false, sessionName };
   }
@@ -77,9 +102,14 @@ export async function ensureService(
 
   log(`⏳ Waiting for ${serviceName} to be ready...`);
   for (let i = 0; i < timeout; i++) {
-    if (await checkHealth(resolvedHealth, sessionName)) {
+    if (await checkHealth(autoHealth, sessionName)) {
       log(`✅ ${serviceName} ready`);
       log(`   └─ tmux session: ${sessionName}`);
+      if (proxied && resolvedPort) {
+        const panePid = getPanePid(sessionName);
+        registerRoute(config, serviceName, resolvedPort, panePid ?? process.pid);
+        log(`   └─ ${getServiceProxyUrl(config, serviceName)}`);
+      }
       return { serviceName, startedByUs: true, sessionName };
     }
     await sleep(1000);
@@ -103,6 +133,8 @@ export async function getStatus(
   const healthy = await checkHealth(resolvedHealth, sessionName);
   const hasTmux = tmux.hasSession(sessionName);
 
+  const proxied = isServiceProxied(config, serviceName);
+
   return {
     name: serviceName,
     healthy,
@@ -111,6 +143,7 @@ export async function getStatus(
     resolvedPort,
     managedByDevmux: hasTmux,
     instanceId: config.instanceId || undefined,
+    proxyUrl: proxied && resolvedPort ? getServiceProxyUrl(config, serviceName) : undefined,
   };
 }
 
@@ -136,6 +169,12 @@ export async function stopService(
   const log = options.quiet ? () => {} : console.log;
 
   log(`🛑 Stopping ${serviceName}...`);
+
+  if (isServiceProxied(config, serviceName)) {
+    try {
+      deregisterRoute(config, serviceName);
+    } catch {}
+  }
 
   if (tmux.hasSession(sessionName)) {
     tmux.killSession(sessionName);
@@ -204,6 +243,20 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function getPanePid(sessionName: string): number | null {
+  try {
+    const { execSync } = require("node:child_process");
+    const output = execSync(
+      `tmux display-message -p -t "${sessionName}" "#{pane_pid}"`,
+      { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] },
+    );
+    const pid = parseInt(output.trim(), 10);
+    return isNaN(pid) ? null : pid;
+  } catch {
+    return null;
+  }
+}
+
 function resolveHealthCheck(health: HealthCheckType | undefined, resolvedPort: number | undefined): HealthCheckType | undefined {
   if (!health) return undefined;
   if (resolvedPort === undefined) return health;
@@ -226,9 +279,10 @@ function resolveHealthCheck(health: HealthCheckType | undefined, resolvedPort: n
 function buildServiceEnv(
   config: ResolvedConfig,
   serviceName: string,
-  userEnv?: Record<string, string>
+  userEnv?: Record<string, string>,
+  portOverride?: number,
 ): Record<string, string> {
-  const resolvedPort = getResolvedPort(config, serviceName);
+  const resolvedPort = portOverride ?? getResolvedPort(config, serviceName);
   const env: Record<string, string> = {};
   
   if (resolvedPort !== undefined) {

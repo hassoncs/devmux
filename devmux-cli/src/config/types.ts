@@ -37,6 +37,14 @@ export interface ServiceDefinition {
 	watch?: ServiceWatchConfig;
 	/** Show this service in the dashboard. Defaults to true for services with a port. */
 	dashboard?: boolean;
+	/** Opt out of portless proxy routing. When false, `port` must be specified. */
+	proxy?: boolean;
+}
+
+export interface ProxyConfig {
+	enabled?: boolean;
+	port?: number;
+	hostnamePattern?: string;
 }
 
 export interface DevMuxConfig {
@@ -48,6 +56,7 @@ export interface DevMuxConfig {
 		remainOnExit?: boolean;
 		dashboard?: boolean | { port?: number };
 	};
+	proxy?: ProxyConfig;
 	watch?: GlobalWatchConfig;
 	services: Record<string, ServiceDefinition>;
 }
@@ -66,4 +75,5 @@ export interface ServiceStatus {
 	resolvedPort?: number;
 	managedByDevmux: boolean;
 	instanceId?: string;
+	proxyUrl?: string;
 }

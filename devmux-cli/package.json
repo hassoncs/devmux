@@ -49,6 +49,7 @@
     "execa": "^9.6.1",
     "fkill": "^10.0.3",
     "pid-port": "^2.0.1",
+    "portless": "^0.4.1",
     "ps-list": "^9.0.0"
   },
   "devDependencies": {
