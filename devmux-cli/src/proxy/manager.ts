@@ -4,12 +4,39 @@ import { homedir } from "node:os";
 import { createServer, createConnection } from "node:net";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { RouteStore, parseHostname, formatUrl } from "portless";
+import { RouteStore } from "./routes.js";
 import type { ResolvedConfig } from "../config/types.js";
 import { getResolvedPort } from "../config/loader.js";
 
 const DEFAULT_PROXY_PORT = 1355;
 const MIN_AUTO_PORT = 4000;
+
+export function parseHostname(input: string): string {
+	let hostname = input.trim().replace(/^https?:\/\//, "").split("/")[0].toLowerCase();
+	if (!hostname || hostname === ".localhost") {
+		throw new Error("Hostname cannot be empty");
+	}
+	if (!hostname.endsWith(".localhost")) {
+		hostname = `${hostname}.localhost`;
+	}
+	const name = hostname.replace(/\.localhost$/, "");
+	if (name.includes("..")) {
+		throw new Error(`Invalid hostname "${name}": consecutive dots are not allowed`);
+	}
+	if (!/^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/.test(name)) {
+		throw new Error(
+			`Invalid hostname "${name}": must contain only lowercase letters, digits, hyphens, and dots`,
+		);
+	}
+	return hostname;
+}
+
+export function formatUrl(hostname: string, proxyPort: number): string {
+	return proxyPort === 80
+		? `http://${hostname}`
+		: `http://${hostname}:${proxyPort}`;
+}
+
 const MAX_AUTO_PORT = 4999;
 const RANDOM_PORT_ATTEMPTS = 50;
 const DAEMON_START_TIMEOUT_MS = 5000;
@@ -118,7 +145,7 @@ export function getProxyStatus(config: ResolvedConfig): {
 
 function isPortListening(port: number): Promise<boolean> {
 	return new Promise((resolve) => {
-		const socket = createConnection({ port, host: "127.0.0.1" });
+		const socket = createConnection({ port, host: "localhost" });
 		socket.setTimeout(500);
 		socket.on("connect", () => { socket.destroy(); resolve(true); });
 		socket.on("timeout", () => { socket.destroy(); resolve(false); });

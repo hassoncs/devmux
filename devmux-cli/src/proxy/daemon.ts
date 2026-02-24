@@ -2,7 +2,8 @@
 import { writeFileSync, unlinkSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { createProxyServer, RouteStore } from "portless";
+import { createProxyServer } from "./server.js";
+import { RouteStore } from "./routes.js";
 
 const proxyPort = parseInt(process.argv[2] ?? "1355", 10);
 const stateDir = process.argv[3] ?? join(homedir(), ".portless");
