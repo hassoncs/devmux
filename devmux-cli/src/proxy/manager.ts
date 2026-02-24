@@ -39,7 +39,7 @@ export function getProxyPort(config: ResolvedConfig): number {
 }
 
 export function isProxyEnabled(config: ResolvedConfig): boolean {
-	return config.proxy?.enabled !== false;
+	return config.proxy?.enabled === true;
 }
 
 export function isServiceProxied(config: ResolvedConfig, serviceName: string): boolean {

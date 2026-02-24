@@ -2,7 +2,7 @@ import { createConnection } from "node:net";
 import { execSync } from "node:child_process";
 import type { HealthCheckType } from "../config/types.js";
 
-export function checkPort(port: number, host: string = "127.0.0.1"): Promise<boolean> {
+function tryConnect(port: number, host: string): Promise<boolean> {
   return new Promise((resolve) => {
     const socket = createConnection({ port, host });
     socket.setTimeout(1000);
@@ -22,6 +22,13 @@ export function checkPort(port: number, host: string = "127.0.0.1"): Promise<boo
       resolve(false);
     });
   });
+}
+
+export async function checkPort(port: number, host?: string): Promise<boolean> {
+  if (host) return tryConnect(port, host);
+  // Try IPv4 first, then IPv6 — covers servers binding to either address family
+  if (await tryConnect(port, "127.0.0.1")) return true;
+  return tryConnect(port, "::1");
 }
 
 export async function checkHttp(
