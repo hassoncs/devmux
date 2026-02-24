@@ -6,6 +6,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { RouteStore, parseHostname, formatUrl } from "portless";
 import type { ResolvedConfig } from "../config/types.js";
+import { getResolvedPort } from "../config/loader.js";
 
 const DEFAULT_PROXY_PORT = 1355;
 const MIN_AUTO_PORT = 4000;
@@ -45,7 +46,10 @@ export function isServiceProxied(config: ResolvedConfig, serviceName: string): b
 	if (!isProxyEnabled(config)) return false;
 	const service = config.services[serviceName];
 	if (!service) return false;
-	return service.proxy !== false;
+	if (service.proxy === false) return false;
+	const hasPort = getResolvedPort(config, serviceName) !== undefined;
+	if (!hasPort && !service.health) return false;
+	return true;
 }
 
 export function getServiceHostname(config: ResolvedConfig, serviceName: string): string {

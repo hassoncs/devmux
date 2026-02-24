@@ -53,18 +53,6 @@ function validateConfig(config: unknown): config is DevMuxConfig {
 	if (typeof c.project !== "string") return false;
 	if (!c.services || typeof c.services !== "object") return false;
 
-	const services = c.services as Record<string, Record<string, unknown>>;
-	for (const [name, svc] of Object.entries(services)) {
-		const health = svc.health as Record<string, unknown> | undefined;
-		const hasPort = svc.port !== undefined || health?.port !== undefined || health?.url !== undefined;
-		if (svc.proxy === false && !hasPort) {
-			throw new Error(
-				`Service "${name}" has proxy: false but no port specified. ` +
-				`Add a health check with a port, or remove proxy: false.`,
-			);
-		}
-	}
-
 	return true;
 }
 
