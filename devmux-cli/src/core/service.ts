@@ -1,3 +1,4 @@
+import { execSync } from "node:child_process";
 import type { ResolvedConfig, ServiceStatus, HealthCheckType } from "../config/types.js";
 import { getSessionName, getServiceCwd, getResolvedPort } from "../config/loader.js";
 import * as tmux from "../tmux/driver.js";
@@ -245,12 +246,11 @@ function sleep(ms: number): Promise<void> {
 
 function getPanePid(sessionName: string): number | null {
   try {
-    const { execSync } = require("node:child_process");
     const output = execSync(
-      `tmux display-message -p -t "${sessionName}" "#{pane_pid}"`,
+      `tmux list-panes -t "${sessionName}" -F "#{pane_pid}"`,
       { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] },
     );
-    const pid = parseInt(output.trim(), 10);
+    const pid = parseInt(output.trim().split("\n")[0], 10);
     return isNaN(pid) ? null : pid;
   } catch {
     return null;
