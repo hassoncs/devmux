@@ -1,7 +1,6 @@
 import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { createProxyServer, RouteStore, parseHostname, formatUrl } from "portless";
 import type { ResolvedConfig } from "../config/types.js";
@@ -12,7 +11,7 @@ const MAX_AUTO_PORT = 4999;
 const RANDOM_PORT_ATTEMPTS = 50;
 
 function getStateDir(proxyPort: number): string {
-	return join(homedir(), ".devmux-proxy");
+	return join(homedir(), ".devmux-proxy", String(proxyPort));
 }
 
 function getPidPath(stateDir: string): string {
@@ -132,6 +131,7 @@ export function startProxyDaemon(config: ResolvedConfig): void {
 	server.listen(proxyPort, () => {
 		writeFileSync(getPidPath(stateDir), process.pid.toString());
 		writeFileSync(getPortFilePath(stateDir), proxyPort.toString());
+		server.unref();
 	});
 
 	process.on("SIGINT", () => { cleanup(stateDir, server); process.exit(0); });
@@ -185,6 +185,7 @@ export async function ensureProxyRunning(config: ResolvedConfig): Promise<void> 
 				try { unlinkSync(getPortFilePath(stateDir)); } catch {}
 			});
 
+			server.unref();
 			resolve();
 		});
 	});
