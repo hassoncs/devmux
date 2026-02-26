@@ -5,6 +5,7 @@ export type {
   ServiceStatus,
   HealthCheckType,
   ProxyConfig,
+  PortConflictInfo,
 } from "./config/types.js";
 
 export { loadConfig, getSessionName, getServiceCwd } from "./config/loader.js";
@@ -17,6 +18,7 @@ export {
   stopService,
   stopAllServices,
   attachService,
+  PortConflictError,
   type EnsureResult,
 } from "./core/service.js";
 

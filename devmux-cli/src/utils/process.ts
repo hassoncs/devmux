@@ -1,11 +1,14 @@
 import fkill from "fkill";
 import psList from "ps-list";
 import { execSync } from "node:child_process";
+import { existsSync, readlinkSync } from "node:fs";
+import { resolve } from "node:path";
 
 export interface ProcessInfo {
   pid: number;
   name: string;
   cmd?: string;
+  cwd?: string;
 }
 
 export async function getProcessOnPort(port: number): Promise<ProcessInfo | null> {
@@ -38,6 +41,41 @@ export async function getProcessOnPort(port: number): Promise<ProcessInfo | null
   }
 }
 
+export function getProcessCwd(pid: number): string | null {
+  try {
+    if (process.platform === "linux") {
+      const linkPath = `/proc/${pid}/cwd`;
+      if (existsSync(linkPath)) {
+        return readlinkSync(linkPath);
+      }
+    }
+
+    const output = execSync(`lsof -p ${pid} 2>/dev/null | grep cwd`, {
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+
+    const line = output.trim().split("\n")[0];
+    if (!line) return null;
+
+    // lsof cwd format: COMMAND PID USER cwd DIR device size node /path/to/dir
+    const match = line.match(/\s+cwd\s+\S+\s+\S+\s+\S+\s+\S+\s+(.*)/);
+    if (match) {
+      return resolve(match[1].trim());
+    }
+
+    const parts = line.trim().split(/\s+/);
+    const lastPart = parts[parts.length - 1];
+    if (lastPart && lastPart.startsWith("/")) {
+      return resolve(lastPart);
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export async function getProcessInfo(pid: number): Promise<ProcessInfo | null> {
   try {
     const processes = await psList();
@@ -48,6 +86,7 @@ export async function getProcessInfo(pid: number): Promise<ProcessInfo | null> {
       pid: proc.pid,
       name: proc.name,
       cmd: proc.cmd,
+      cwd: getProcessCwd(proc.pid) ?? undefined,
     };
   } catch {
     return null;

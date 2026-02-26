@@ -1,9 +1,10 @@
 import { execSync } from "node:child_process";
-import type { ResolvedConfig, ServiceStatus, HealthCheckType } from "../config/types.js";
+import { resolve } from "node:path";
+import type { ResolvedConfig, ServiceStatus, HealthCheckType, PortConflictInfo } from "../config/types.js";
 import { getSessionName, getServiceCwd, getResolvedPort } from "../config/loader.js";
 import * as tmux from "../tmux/driver.js";
 import { checkHealth, getHealthPort } from "../health/checkers.js";
-import { getProcessesOnPort, killProcess } from "../utils/process.js";
+import { getProcessesOnPort, getProcessOnPort, killProcess, getProcessCwd } from "../utils/process.js";
 import {
   isServiceProxied,
   getServiceProxyUrl,
@@ -70,6 +71,15 @@ export async function ensureService(
   const isHealthy = await checkHealth(autoHealth, sessionName);
   if (isHealthy) {
     const hasTmux = tmux.hasSession(sessionName);
+
+    if (!hasTmux && resolvedPort) {
+      const conflict = await detectPortConflict(resolvedPort, config.configRoot, serviceName);
+      if (conflict) {
+        const msg = formatPortConflictError(conflict, serviceName, resolvedPort);
+        throw new PortConflictError(msg, conflict);
+      }
+    }
+
     log(`✅ ${serviceName} already running`);
     if (hasTmux) {
       log(`   └─ tmux session: ${sessionName}`);
@@ -136,6 +146,14 @@ export async function getStatus(
 
   const proxied = isServiceProxied(config, serviceName);
 
+  let portConflict: PortConflictInfo | undefined;
+  if (healthy && !hasTmux && resolvedPort) {
+    const conflict = await detectPortConflict(resolvedPort, config.configRoot, serviceName);
+    if (conflict) {
+      portConflict = conflict;
+    }
+  }
+
   return {
     name: serviceName,
     healthy,
@@ -145,6 +163,7 @@ export async function getStatus(
     managedByDevmux: hasTmux,
     instanceId: config.instanceId || undefined,
     proxyUrl: proxied && resolvedPort ? getServiceProxyUrl(config, serviceName) : undefined,
+    portConflict,
   };
 }
 
@@ -274,6 +293,81 @@ function resolveHealthCheck(health: HealthCheckType | undefined, resolvedPort: n
     }
   }
   return health;
+}
+
+export class PortConflictError extends Error {
+  conflict: PortConflictInfo;
+  constructor(message: string, conflict: PortConflictInfo) {
+    super(message);
+    this.name = "PortConflictError";
+    this.conflict = conflict;
+  }
+}
+
+async function detectPortConflict(
+  port: number,
+  configRoot: string,
+  serviceName: string,
+): Promise<PortConflictInfo | null> {
+  const proc = await getProcessOnPort(port);
+  if (!proc) return null;
+
+  const processCwd = proc.cwd ?? getProcessCwd(proc.pid);
+  if (!processCwd) {
+    return {
+      port,
+      serviceName,
+      pid: proc.pid,
+      processName: proc.name,
+      processCmd: proc.cmd,
+      processCwd: null,
+      expectedCwd: configRoot,
+      cwdMatch: "unknown",
+    };
+  }
+
+  const normalizedProcessCwd = resolve(processCwd);
+  const normalizedConfigRoot = resolve(configRoot);
+  const isMatch =
+    normalizedProcessCwd === normalizedConfigRoot ||
+    normalizedProcessCwd.startsWith(normalizedConfigRoot + "/");
+
+  if (isMatch) return null;
+
+  return {
+    port,
+    serviceName,
+    pid: proc.pid,
+    processName: proc.name,
+    processCmd: proc.cmd,
+    processCwd: normalizedProcessCwd,
+    expectedCwd: normalizedConfigRoot,
+    cwdMatch: "mismatch",
+  };
+}
+
+function formatPortConflictError(
+  conflict: PortConflictInfo,
+  serviceName: string,
+  port: number,
+): string {
+  const lines: string[] = [];
+  lines.push(`Port conflict detected for ${serviceName} (port ${port})`);
+  lines.push(`Port ${port} is in use by another process:`);
+  lines.push(`  PID ${conflict.pid}: ${conflict.processName}`);
+  if (conflict.processCmd) {
+    lines.push(`  Command: ${conflict.processCmd}`);
+  }
+  if (conflict.processCwd) {
+    lines.push(`  Working dir: ${conflict.processCwd}`);
+    lines.push(`  Expected:    ${conflict.expectedCwd}`);
+  } else {
+    lines.push(`  Working dir: unknown`);
+    lines.push(`  Expected:    ${conflict.expectedCwd}`);
+  }
+  lines.push(`This is NOT the ${serviceName} service.`);
+  lines.push(`Run \`kill ${conflict.pid}\` to free the port, then retry.`);
+  return lines.join("\n");
 }
 
 function buildServiceEnv(

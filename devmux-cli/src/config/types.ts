@@ -67,6 +67,17 @@ export interface ResolvedConfig extends DevMuxConfig {
 	instanceId: string;
 }
 
+export interface PortConflictInfo {
+	port: number;
+	serviceName: string;
+	pid: number;
+	processName: string;
+	processCmd?: string;
+	processCwd: string | null;
+	expectedCwd: string;
+	cwdMatch: "match" | "mismatch" | "unknown";
+}
+
 export interface ServiceStatus {
 	name: string;
 	healthy: boolean;
@@ -76,4 +87,5 @@ export interface ServiceStatus {
 	managedByDevmux: boolean;
 	instanceId?: string;
 	proxyUrl?: string;
+	portConflict?: PortConflictInfo;
 }

@@ -12,6 +12,7 @@ import {
   stopService,
   stopAllServices,
   attachService,
+  PortConflictError,
 } from "./core/service.js";
 import { runWithServices } from "./core/run.js";
 import { discoverFromTurbo, formatDiscoveredConfig } from "./discovery/turbo.js";
@@ -48,9 +49,17 @@ const ensure = defineCommand({
   },
   async run({ args }) {
     const config = loadConfig();
-    await ensureService(config, args.service, {
-      timeout: args.timeout ? parseInt(args.timeout) : undefined,
-    });
+    try {
+      await ensureService(config, args.service, {
+        timeout: args.timeout ? parseInt(args.timeout) : undefined,
+      });
+    } catch (err) {
+      if (err instanceof PortConflictError) {
+        console.error(`\n⚠️  ${err.message}\n`);
+        process.exit(1);
+      }
+      throw err;
+    }
   },
 });
 
@@ -83,15 +92,31 @@ const status = defineCommand({
     console.log("");
 
     for (const s of statuses) {
-      const icon = s.healthy ? "✅" : "❌";
       const portDisplay = s.resolvedPort ?? s.port;
       const portInfo = portDisplay ? ` (port ${portDisplay})` : "";
-      console.log(`${icon} ${s.name}${portInfo}: ${s.healthy ? "Running" : "Not running"}`);
 
-      if (s.tmuxSession) {
-        console.log(`   └─ tmux: ${s.tmuxSession}`);
-      } else if (s.healthy) {
-        console.log(`   └─ (running outside tmux)`);
+      if (s.portConflict) {
+        const c = s.portConflict;
+        console.log(`⚠️  ${s.name}${portInfo}: PORT CONFLICT`);
+        console.log(`   └─ Port ${c.port} is in use by another process:`);
+        console.log(`   └─   PID ${c.pid}: ${c.processName}`);
+        if (c.processCmd) {
+          console.log(`   └─   ${c.processCmd}`);
+        }
+        if (c.processCwd) {
+          console.log(`   └─   Working dir: ${c.processCwd}`);
+        }
+        console.log(`   └─ This is NOT the ${s.name} service.`);
+        console.log(`   └─ Run \`kill ${c.pid}\` to free the port, then retry.`);
+      } else {
+        const icon = s.healthy ? "✅" : "❌";
+        console.log(`${icon} ${s.name}${portInfo}: ${s.healthy ? "Running" : "Not running"}`);
+
+        if (s.tmuxSession) {
+          console.log(`   └─ tmux: ${s.tmuxSession}`);
+        } else if (s.healthy) {
+          console.log(`   └─ (running outside tmux)`);
+        }
       }
       if (s.proxyUrl) {
         console.log(`   └─ ${s.proxyUrl}`);
@@ -155,9 +180,17 @@ const start = defineCommand({
   },
   async run({ args }) {
     const config = loadConfig();
-    await ensureService(config, args.service, {
-      timeout: args.timeout ? parseInt(args.timeout) : undefined,
-    });
+    try {
+      await ensureService(config, args.service, {
+        timeout: args.timeout ? parseInt(args.timeout) : undefined,
+      });
+    } catch (err) {
+      if (err instanceof PortConflictError) {
+        console.error(`\n⚠️  ${err.message}\n`);
+        process.exit(1);
+      }
+      throw err;
+    }
   },
 });
 
@@ -189,13 +222,20 @@ const run = defineCommand({
       process.exit(1);
     }
 
-    const exitCode = await runWithServices(config, command, {
-      services,
-      stopOnExit: !args["no-stop"],
-      dashboard: args["no-dashboard"] ? false : undefined,
-    });
-
-    process.exit(exitCode);
+    try {
+      const exitCode = await runWithServices(config, command, {
+        services,
+        stopOnExit: !args["no-stop"],
+        dashboard: args["no-dashboard"] ? false : undefined,
+      });
+      process.exit(exitCode);
+    } catch (err) {
+      if (err instanceof PortConflictError) {
+        console.error(`\n⚠️  ${err.message}\n`);
+        process.exit(1);
+      }
+      throw err;
+    }
   },
 });
 
