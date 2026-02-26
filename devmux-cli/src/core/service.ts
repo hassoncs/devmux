@@ -106,7 +106,12 @@ export async function ensureService(
   if (resolvedPort && config.instanceId) {
     log(`   └─ port: ${resolvedPort} (instance: ${config.instanceId})`);
   }
-  tmux.newSession(sessionName, cwd, service.command, env);
+  const resolvedCommand = service.command
+    .replace(/\{\{PORT\}\}/g, String(resolvedPort ?? ""))
+    .replace(/\{\{INSTANCE\}\}/g, config.instanceId)
+    .replace(/\{\{SERVICE\}\}/g, serviceName)
+    .replace(/\{\{PROJECT\}\}/g, config.project);
+  tmux.newSession(sessionName, cwd, resolvedCommand, env);
 
   const remainOnExit = config.defaults?.remainOnExit ?? true;
   tmux.setRemainOnExit(sessionName, remainOnExit);
