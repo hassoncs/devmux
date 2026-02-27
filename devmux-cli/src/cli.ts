@@ -34,6 +34,10 @@ import {
   listProxyRoutes,
 } from "./proxy/manager.js";
 
+const { version } = JSON.parse(
+  readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../package.json"), "utf-8")
+) as { version: string };
+
 if (process.platform === "win32" && !process.env.WSL_DISTRO_NAME) {
   console.error("❌ DevMux requires Windows Subsystem for Linux (WSL) on Windows");
   console.error("   Install WSL: https://docs.microsoft.com/en-us/windows/wsl/install");
@@ -638,7 +642,7 @@ const proxy = defineCommand({
 const main = defineCommand({
   meta: {
     name: "devmux",
-    version: "0.1.0",
+    version,
     description: "tmux-based service management for monorepos",
   },
   subCommands: {
