@@ -1,4 +1,4 @@
-import { execSync, spawn } from "node:child_process";
+import { execSync, spawnSync, spawn } from "node:child_process";
 
 export function hasSession(sessionName: string): boolean {
   try {
@@ -33,16 +33,18 @@ export function newSession(
   command: string,
   env?: Record<string, string>
 ): void {
-  const envPrefix = env
-    ? Object.entries(env)
-        .map(([k, v]) => `${k}=${v}`)
-        .join(" ") + " "
-    : "";
+  const envArgs = env
+    ? Object.entries(env).flatMap(([k, v]) => ["-e", `${k}=${v}`])
+    : [];
 
-  execSync(
-    `tmux new-session -d -s "${sessionName}" -c "${cwd}" "${envPrefix}${command}"`,
-    { stdio: ["pipe", "pipe", "pipe"] }
-  );
+  spawnSync("tmux", ["new-session", "-d", "-s", sessionName, "-c", cwd, ...envArgs], {
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+
+  // send-keys avoids shell quoting issues — command content is never interpreted by a shell
+  spawnSync("tmux", ["send-keys", "-t", sessionName, command, "Enter"], {
+    stdio: ["pipe", "pipe", "pipe"],
+  });
 }
 
 export function setRemainOnExit(sessionName: string, value: boolean): void {
