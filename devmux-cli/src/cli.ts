@@ -4,6 +4,7 @@ import { defineCommand, runMain } from "citty";
 import { readFileSync, mkdirSync, copyFileSync, existsSync, readdirSync, cpSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { execa } from "execa";
 import { loadConfig } from "./config/loader.js";
 import {
   ensureService,
@@ -176,16 +177,70 @@ const restart = defineCommand({
   },
 });
 
+async function pickServiceFzf(
+  services: { name: string; port?: number }[]
+): Promise<string | undefined> {
+  const lines = services
+    .map((s) => (s.port ? `${s.name} :${s.port}` : s.name))
+    .join("\n");
+
+  try {
+    const result = await execa("fzf", [
+      "--height=40%",
+      "--layout=reverse",
+      "--border",
+      "--prompt=devmux> ",
+      "--header=Select service to start (Enter=start, Esc=cancel)",
+    ], {
+      input: lines,
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "inherit",
+      reject: false,
+    });
+
+    if (result.exitCode !== 0 || !result.stdout.trim()) {
+      return undefined;
+    }
+
+    const selected = result.stdout.trim().split(/\s/)[0];
+    return selected || undefined;
+  } catch {
+    console.error("❌ fzf not found. Install with: brew install fzf");
+    return undefined;
+  }
+}
+
 const start = defineCommand({
   meta: { name: "start", description: "Start a service (alias for ensure)" },
   args: {
-    service: { type: "positional", description: "Service name", required: true },
+    service: { type: "positional", description: "Service name (omit for interactive picker)", required: false },
     timeout: { type: "string", description: "Startup timeout in seconds" },
   },
   async run({ args }) {
     const config = loadConfig();
+    let serviceName = args.service as string | undefined;
+
+    if (!serviceName) {
+      const services = Object.entries(config.services).map(([name, def]) => ({
+        name,
+        port: def.port ?? (def.health?.type === "port" ? def.health.port : undefined),
+      }));
+
+      if (services.length === 0) {
+        console.error("❌ No services defined in devmux config");
+        process.exit(1);
+      }
+
+      serviceName = await pickServiceFzf(services);
+      if (!serviceName) {
+        console.log("Cancelled.");
+        process.exit(0);
+      }
+    }
+
     try {
-      await ensureService(config, args.service, {
+      await ensureService(config, serviceName, {
         timeout: args.timeout ? parseInt(args.timeout) : undefined,
       });
     } catch (err) {
