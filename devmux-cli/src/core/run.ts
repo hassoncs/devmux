@@ -1,10 +1,11 @@
 import { spawn } from "node:child_process";
 import type { Server } from "node:http";
 import type { ResolvedConfig } from "../config/types.js";
-import { getSessionName } from "../config/loader.js";
+import { getSessionName, getResolvedPort } from "../config/loader.js";
 import { ensureService, stopService, type EnsureResult } from "./service.js";
 import { checkHealth } from "../health/checkers.js";
 import { saveDashboardPid, clearDashboardPid } from "../dashboard/server-manager.js";
+import { isServiceProxied, getServiceProxyUrl } from "../proxy/manager.js";
 
 export interface RunOptions {
   services: string[];
@@ -70,6 +71,31 @@ export async function runWithServices(
   }
 
   log("");
+
+  const serviceUrls: { name: string; url: string }[] = [];
+  for (const serviceName of services) {
+    const resolvedPort = getResolvedPort(config, serviceName);
+    if (resolvedPort) {
+      const proxied = isServiceProxied(config, serviceName);
+      const url = proxied
+        ? getServiceProxyUrl(config, serviceName)
+        : `http://localhost:${resolvedPort}`;
+      serviceUrls.push({ name: serviceName, url });
+    }
+  }
+
+  if (serviceUrls.length > 0 || dashboardServer) {
+    log("═══════════════════════════════════════");
+    log("       Service URLs");
+    log("═══════════════════════════════════════");
+    for (const { name, url } of serviceUrls) {
+      log(`  ${name}: ${url}`);
+    }
+    if (dashboardServer && dashboardConfig.enabled) {
+      log(`  dashboard: http://localhost:${dashboardConfig.port}`);
+    }
+    log("");
+  }
 
   const cleanup = () => {
     if (dashboardServer) {

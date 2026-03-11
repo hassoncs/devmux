@@ -86,13 +86,17 @@ export async function ensureService(
     } else {
       log(`   └─ (running outside tmux)`);
     }
-    if (resolvedPort && config.instanceId) {
-      log(`   └─ port: ${resolvedPort} (instance: ${config.instanceId})`);
-    }
-    if (proxied && resolvedPort) {
-      const panePid = getPanePid(sessionName);
-      registerRoute(config, serviceName, resolvedPort, panePid ?? process.pid);
-      log(`   └─ ${getServiceProxyUrl(config, serviceName)}`);
+    if (resolvedPort) {
+      if (config.instanceId) {
+        log(`   └─ port: ${resolvedPort} (instance: ${config.instanceId})`);
+      }
+      if (proxied) {
+        const panePid = getPanePid(sessionName);
+        registerRoute(config, serviceName, resolvedPort, panePid ?? process.pid);
+        log(`   └─ ${getServiceProxyUrl(config, serviceName)}`);
+      } else {
+        log(`   └─ http://localhost:${resolvedPort}`);
+      }
     }
     return { serviceName, startedByUs: false, sessionName };
   }
@@ -121,10 +125,14 @@ export async function ensureService(
     if (await checkHealth(autoHealth, sessionName)) {
       log(`✅ ${serviceName} ready`);
       log(`   └─ tmux session: ${sessionName}`);
-      if (proxied && resolvedPort) {
-        const panePid = getPanePid(sessionName);
-        registerRoute(config, serviceName, resolvedPort, panePid ?? process.pid);
-        log(`   └─ ${getServiceProxyUrl(config, serviceName)}`);
+      if (resolvedPort) {
+        if (proxied) {
+          const panePid = getPanePid(sessionName);
+          registerRoute(config, serviceName, resolvedPort, panePid ?? process.pid);
+          log(`   └─ ${getServiceProxyUrl(config, serviceName)}`);
+        } else {
+          log(`   └─ http://localhost:${resolvedPort}`);
+        }
       }
       return { serviceName, startedByUs: true, sessionName };
     }
