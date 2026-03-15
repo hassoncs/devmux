@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 import { defineCommand, runMain } from "citty";
-import { readFileSync, mkdirSync, copyFileSync, existsSync, readdirSync, cpSync } from "node:fs";
-import { resolve, dirname, join } from "node:path";
+import { readFileSync, mkdirSync, existsSync, cpSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execa } from "execa";
 import { loadConfig } from "./config/loader.js";
@@ -16,9 +16,11 @@ import {
   PortConflictError,
 } from "./core/service.js";
 import { runWithServices } from "./core/run.js";
-import { discoverFromTurbo, formatDiscoveredConfig } from "./discovery/turbo.js";
 import {
-  getWatcherStatus,
+  discoverFromTurbo,
+  formatDiscoveredConfig,
+} from "./discovery/turbo.js";
+import {
   getAllWatcherStatuses,
   startServiceWatcher,
   stopServiceWatcher,
@@ -28,6 +30,7 @@ import {
   clearQueue,
 } from "./watch/index.js";
 import { diagnosePort, formatDiagnosis } from "./utils/diagnose.js";
+import { collectLocalPortReport } from "./ports/report.js";
 import {
   getProxyStatus,
   startProxyDaemon,
@@ -36,20 +39,34 @@ import {
 } from "./proxy/manager.js";
 
 const { version } = JSON.parse(
-  readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../package.json"), "utf-8")
+  readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "../package.json"),
+    "utf-8",
+  ),
 ) as { version: string };
 
 if (process.platform === "win32" && !process.env.WSL_DISTRO_NAME) {
-  console.error("❌ DevMux requires Windows Subsystem for Linux (WSL) on Windows");
-  console.error("   Install WSL: https://docs.microsoft.com/en-us/windows/wsl/install");
+  console.error(
+    "❌ DevMux requires Windows Subsystem for Linux (WSL) on Windows",
+  );
+  console.error(
+    "   Install WSL: https://docs.microsoft.com/en-us/windows/wsl/install",
+  );
   console.error("   Then run DevMux from within your WSL environment");
   process.exit(1);
 }
 
 const ensure = defineCommand({
-  meta: { name: "ensure", description: "Ensure a service is running (idempotent)" },
+  meta: {
+    name: "ensure",
+    description: "Ensure a service is running (idempotent)",
+  },
   args: {
-    service: { type: "positional", description: "Service name", required: true },
+    service: {
+      type: "positional",
+      description: "Service name",
+      required: true,
+    },
     timeout: { type: "string", description: "Startup timeout in seconds" },
   },
   async run({ args }) {
@@ -80,11 +97,17 @@ const status = defineCommand({
     const dashStatus = getDashboardStatus();
 
     if (args.json) {
-      console.log(JSON.stringify({
-        instanceId: config.instanceId || null,
-        services: statuses,
-        dashboard: dashStatus,
-      }, null, 2));
+      console.log(
+        JSON.stringify(
+          {
+            instanceId: config.instanceId || null,
+            services: statuses,
+            dashboard: dashStatus,
+          },
+          null,
+          2,
+        ),
+      );
       return;
     }
 
@@ -112,10 +135,14 @@ const status = defineCommand({
           console.log(`   └─   Working dir: ${c.processCwd}`);
         }
         console.log(`   └─ This is NOT the ${s.name} service.`);
-        console.log(`   └─ Run \`kill ${c.pid}\` to free the port, then retry.`);
+        console.log(
+          `   └─ Run \`kill ${c.pid}\` to free the port, then retry.`,
+        );
       } else {
         const icon = s.healthy ? "✅" : "❌";
-        console.log(`${icon} ${s.name}${portInfo}: ${s.healthy ? "Running" : "Not running"}`);
+        console.log(
+          `${icon} ${s.name}${portInfo}: ${s.healthy ? "Running" : "Not running"}`,
+        );
 
         if (s.tmuxSession) {
           console.log(`   └─ tmux: ${s.tmuxSession}`);
@@ -130,7 +157,9 @@ const status = defineCommand({
     }
 
     const dashIcon = dashStatus.running ? "✅" : "⚫";
-    const dashInfo = dashStatus.running ? `Running (port ${dashStatus.port})` : "Not running";
+    const dashInfo = dashStatus.running
+      ? `Running (port ${dashStatus.port})`
+      : "Not running";
     console.log(`${dashIcon} dashboard: ${dashInfo}`);
     if (dashStatus.running) {
       console.log(`   └─ http://localhost:${dashStatus.port}`);
@@ -151,7 +180,8 @@ const stop = defineCommand({
 
     if (serviceName === "all") {
       stopAllServices(config, { killPorts: args.force });
-      const { getDashboardStatus, stopDashboardServer } = await import("./dashboard/index.js");
+      const { getDashboardStatus, stopDashboardServer } =
+        await import("./dashboard/index.js");
       if (getDashboardStatus().running) {
         stopDashboardServer();
       }
@@ -164,9 +194,16 @@ const stop = defineCommand({
 const restart = defineCommand({
   meta: { name: "restart", description: "Restart a service (stop + start)" },
   args: {
-    service: { type: "positional", description: "Service name", required: true },
+    service: {
+      type: "positional",
+      description: "Service name",
+      required: true,
+    },
     timeout: { type: "string", description: "Startup timeout in seconds" },
-    force: { type: "boolean", description: "Also kill processes on ports before restarting" },
+    force: {
+      type: "boolean",
+      description: "Also kill processes on ports before restarting",
+    },
   },
   async run({ args }) {
     const config = loadConfig();
@@ -178,26 +215,30 @@ const restart = defineCommand({
 });
 
 async function pickServiceFzf(
-  services: { name: string; port?: number }[]
+  services: { name: string; port?: number }[],
 ): Promise<string | undefined> {
   const lines = services
     .map((s) => (s.port ? `${s.name} :${s.port}` : s.name))
     .join("\n");
 
   try {
-    const result = await execa("fzf", [
-      "--height=40%",
-      "--layout=reverse",
-      "--border",
-      "--prompt=devmux> ",
-      "--header=Select service to start (Enter=start, Esc=cancel)",
-    ], {
-      input: lines,
-      stdin: "pipe",
-      stdout: "pipe",
-      stderr: "inherit",
-      reject: false,
-    });
+    const result = await execa(
+      "fzf",
+      [
+        "--height=40%",
+        "--layout=reverse",
+        "--border",
+        "--prompt=devmux> ",
+        "--header=Select service to start (Enter=start, Esc=cancel)",
+      ],
+      {
+        input: lines,
+        stdin: "pipe",
+        stdout: "pipe",
+        stderr: "inherit",
+        reject: false,
+      },
+    );
 
     if (result.exitCode !== 0 || !result.stdout.trim()) {
       return undefined;
@@ -214,7 +255,11 @@ async function pickServiceFzf(
 const start = defineCommand({
   meta: { name: "start", description: "Start a service (alias for ensure)" },
   args: {
-    service: { type: "positional", description: "Service name (omit for interactive picker)", required: false },
+    service: {
+      type: "positional",
+      description: "Service name (omit for interactive picker)",
+      required: false,
+    },
     timeout: { type: "string", description: "Startup timeout in seconds" },
   },
   async run({ args }) {
@@ -224,7 +269,9 @@ const start = defineCommand({
     if (!serviceName) {
       const services = Object.entries(config.services).map(([name, def]) => ({
         name,
-        port: def.port ?? (def.health?.type === "port" ? def.health.port : undefined),
+        port:
+          def.port ??
+          (def.health?.type === "port" ? def.health.port : undefined),
       }));
 
       if (services.length === 0) {
@@ -256,7 +303,11 @@ const start = defineCommand({
 const attach = defineCommand({
   meta: { name: "attach", description: "Attach to a service's tmux session" },
   args: {
-    service: { type: "positional", description: "Service name", required: true },
+    service: {
+      type: "positional",
+      description: "Service name",
+      required: true,
+    },
   },
   run({ args }) {
     const config = loadConfig();
@@ -265,11 +316,21 @@ const attach = defineCommand({
 });
 
 const run = defineCommand({
-  meta: { name: "run", description: "Run a command with services, cleanup on exit" },
+  meta: {
+    name: "run",
+    description: "Run a command with services, cleanup on exit",
+  },
   args: {
-    with: { type: "string", description: "Comma-separated services to ensure", required: true },
+    with: {
+      type: "string",
+      description: "Comma-separated services to ensure",
+      required: true,
+    },
     "no-stop": { type: "boolean", description: "Don't stop services on exit" },
-    "no-dashboard": { type: "boolean", description: "Skip auto-launching the dashboard" },
+    "no-dashboard": {
+      type: "boolean",
+      description: "Skip auto-launching the dashboard",
+    },
   },
   async run({ args }) {
     const config = loadConfig();
@@ -301,7 +362,11 @@ const run = defineCommand({
 const discover = defineCommand({
   meta: { name: "discover", description: "Discover services from turbo.json" },
   args: {
-    source: { type: "positional", description: "Source to discover from (turbo)", default: "turbo" },
+    source: {
+      type: "positional",
+      description: "Source to discover from (turbo)",
+      default: "turbo",
+    },
   },
   run({ args }) {
     if (args.source !== "turbo") {
@@ -312,42 +377,57 @@ const discover = defineCommand({
     const discovered = discoverFromTurbo(process.cwd());
 
     if (!discovered) {
-      console.error("❌ No services discovered. Make sure turbo.json exists with persistent tasks.");
+      console.error(
+        "❌ No services discovered. Make sure turbo.json exists with persistent tasks.",
+      );
       process.exit(1);
     }
 
     console.log(formatDiscoveredConfig(discovered));
     console.log("");
-    console.log("Save this as devmux.config.json and update the health checks.");
+    console.log(
+      "Save this as devmux.config.json and update the health checks.",
+    );
   },
 });
 
 const init = defineCommand({
-  meta: { name: "init", description: "Initialize devmux config" },
+  meta: {
+    name: "init",
+    description:
+      "Print a starter devmux config to stdout. Pipe to a file to save it.",
+  },
   run() {
     const template = {
       version: 1,
       project: "my-project",
       services: {
         api: {
-          cwd: "api",
+          cwd: ".",
           command: "pnpm dev",
           health: { type: "port", port: 8787 },
         },
       },
     };
 
-    console.log("# devmux.config.json template");
     console.log(JSON.stringify(template, null, 2));
-    console.log("");
-    console.log("Save this as devmux.config.json in your project root.");
+    console.error("");
+    console.error("Usage:");
+    console.error("  devmux init > devmux.config.json              # Save template");
+    console.error("  devmux discover > devmux.config.json           # Auto-discover from turbo.json");
+    console.error("");
+    console.error("Then edit the file to match your project's services.");
   },
 });
 
 const diagnose = defineCommand({
   meta: { name: "diagnose", description: "Diagnose port issues for a service" },
   args: {
-    service: { type: "positional", description: "Service name", required: true },
+    service: {
+      type: "positional",
+      description: "Service name",
+      required: true,
+    },
     json: { type: "boolean", description: "Output as JSON" },
   },
   async run({ args }) {
@@ -372,8 +452,85 @@ const diagnose = defineCommand({
   },
 });
 
+const ports = defineCommand({
+  meta: {
+    name: "ports",
+    description: "Show configured ports for the current project",
+  },
+  args: {
+    json: { type: "boolean", description: "Output as JSON" },
+    plain: { type: "boolean", description: "Output as tab-separated lines" },
+    live: {
+      type: "boolean",
+      description: "Also probe whether ports are currently occupied",
+    },
+  },
+  async run({ args }) {
+    const report = await collectLocalPortReport({ live: args.live });
+
+    if (args.json) {
+      console.log(JSON.stringify(report, null, 2));
+      return;
+    }
+
+    if (args.plain) {
+      for (const service of report.services) {
+        const liveStatus = service.live?.summary.isBlocked
+          ? "occupied"
+          : "free";
+        console.log(
+          [
+            report.project,
+            service.serviceName,
+            service.basePort ?? "",
+            service.resolvedPort ?? "",
+            service.healthType,
+            args.live ? liveStatus : "",
+          ].join("\t"),
+        );
+      }
+      return;
+    }
+
+    console.log("═══════════════════════════════════════");
+    console.log("        Project Ports");
+    console.log("═══════════════════════════════════════");
+    console.log("");
+    console.log(`Project: ${report.project}`);
+    console.log(`Config: ${report.configRoot}`);
+    console.log(`Services: ${report.summary.serviceCount}`);
+    console.log(`Configured ports: ${report.summary.servicesWithPorts}`);
+    if (report.instanceId) {
+      console.log(`Instance: ${report.instanceId}`);
+    }
+    console.log("");
+
+    for (const service of report.services) {
+      const portDisplay =
+        service.basePort === undefined
+          ? "n/a"
+          : report.instanceId && service.resolvedPort !== undefined
+            ? `${service.basePort} -> ${service.resolvedPort}`
+            : `${service.basePort}`;
+      const icon = service.basePort === undefined ? "⚫" : "✅";
+      console.log(
+        `${icon} ${service.serviceName} : ${portDisplay} [${service.healthType}]`,
+      );
+      if (service.live?.summary.isBlocked) {
+        console.log(
+          `   └─ live blocker: ${service.live.summary.blockerName ?? "occupied"}`,
+        );
+      }
+      console.log("");
+    }
+  },
+});
+
 const installSkill = defineCommand({
-  meta: { name: "install-skill", description: "Install DevMux skills to .claude/skills" },
+  meta: {
+    name: "install-skill",
+    description: "Install DevMux skills to .claude/skills",
+  },
   run() {
     const __dirname = dirname(fileURLToPath(import.meta.url));
     const skillDir = join(__dirname, "skill");
@@ -386,7 +543,7 @@ const installSkill = defineCommand({
 
       mkdirSync(targetDir, { recursive: true });
       cpSync(skillDir, targetDir, { recursive: true });
-      
+
       console.log(`✅ Installed DevMux skill to .claude/skills/devmux/`);
     } catch (e) {
       console.error("❌ Failed to install skills:");
@@ -452,7 +609,9 @@ const watchStatus = defineCommand({
 
     for (const s of statuses) {
       const icon = s.pipeActive ? "👁️" : "⚫";
-      console.log(`${icon} ${s.service}: ${s.pipeActive ? "Watching" : "Not watching"}`);
+      console.log(
+        `${icon} ${s.service}: ${s.pipeActive ? "Watching" : "Not watching"}`,
+      );
       if (s.pipeActive) {
         console.log(`   └─ session: ${s.sessionName}`);
       }
@@ -494,12 +653,18 @@ const watchQueue = defineCommand({
 
     for (const e of events) {
       const severityIcon =
-        e.severity === "critical" ? "🔴" :
-        e.severity === "error" ? "🟠" :
-        e.severity === "warning" ? "🟡" : "🔵";
+        e.severity === "critical"
+          ? "🔴"
+          : e.severity === "error"
+            ? "🟠"
+            : e.severity === "warning"
+              ? "🟡"
+              : "🔵";
 
       console.log(`${severityIcon} [${e.service}] ${e.pattern}`);
-      console.log(`   ${e.rawContent.slice(0, 80)}${e.rawContent.length > 80 ? "..." : ""}`);
+      console.log(
+        `   ${e.rawContent.slice(0, 80)}${e.rawContent.length > 80 ? "..." : ""}`,
+      );
       console.log(`   └─ ${e.firstSeen}`);
       console.log("");
     }
@@ -564,7 +729,10 @@ const telemetryStatus = defineCommand({
 });
 
 const telemetry = defineCommand({
-  meta: { name: "telemetry", description: "Manage telemetry server for browser/app logs" },
+  meta: {
+    name: "telemetry",
+    description: "Manage telemetry server for browser/app logs",
+  },
   subCommands: {
     start: telemetryStart,
     stop: telemetryStop,
@@ -576,13 +744,23 @@ const dashboardStart = defineCommand({
   meta: { name: "start", description: "Start the dashboard server" },
   args: {
     port: { type: "string", description: "Port to listen on (default: 9000)" },
-    "no-open": { type: "boolean", description: "Don't open browser automatically" },
+    "no-open": {
+      type: "boolean",
+      description: "Don't open browser automatically",
+    },
   },
   async run({ args }) {
-    const { getDashboardStatus, startDashboard, saveDashboardPid, clearDashboardPid } = await import("./dashboard/index.js");
+    const {
+      getDashboardStatus,
+      startDashboard,
+      saveDashboardPid,
+      clearDashboardPid,
+    } = await import("./dashboard/index.js");
     const existing = getDashboardStatus();
     if (existing.running) {
-      console.log(`Dashboard already running (PID: ${existing.pid}, port: ${existing.port})`);
+      console.log(
+        `Dashboard already running (PID: ${existing.pid}, port: ${existing.port})`,
+      );
       return;
     }
     const result = await startDashboard({
@@ -594,8 +772,14 @@ const dashboardStart = defineCommand({
       result.server.close();
       clearDashboardPid();
     };
-    process.on("SIGINT", () => { cleanupDashboard(); process.exit(0); });
-    process.on("SIGTERM", () => { cleanupDashboard(); process.exit(0); });
+    process.on("SIGINT", () => {
+      cleanupDashboard();
+      process.exit(0);
+    });
+    process.on("SIGTERM", () => {
+      cleanupDashboard();
+      process.exit(0);
+    });
   },
 });
 
@@ -632,7 +816,10 @@ const dashboardStatus = defineCommand({
 });
 
 const dashboard = defineCommand({
-  meta: { name: "dashboard", description: "Manage web dashboard for service monitoring" },
+  meta: {
+    name: "dashboard",
+    description: "Manage web dashboard for service monitoring",
+  },
   subCommands: {
     start: dashboardStart,
     stop: dashboardStop,
@@ -686,7 +873,10 @@ const proxyStatus = defineCommand({
 });
 
 const proxy = defineCommand({
-  meta: { name: "proxy", description: "Manage portless proxy for .localhost URLs" },
+  meta: {
+    name: "proxy",
+    description: "Manage portless proxy for .localhost URLs",
+  },
   subCommands: {
     start: proxyStart,
     stop: proxyStop,
@@ -711,6 +901,7 @@ const main = defineCommand({
     discover,
     init,
     diagnose,
+    ports,
     watch,
     telemetry,
     dashboard,
