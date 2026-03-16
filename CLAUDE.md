@@ -280,6 +280,20 @@ JSONL file at `~/.opencode/triggers/queue.jsonl`:
 }
 ```
 
+## Portless Proxy (Named localhost URLs)
+
+DevMux supports named `*.localhost` URLs on port 80 with no port numbers needed.
+
+**Full docs:** `docs/PORTLESS_PROXY.md`
+
+**Quick summary:**
+- Enable with `"proxy": { "enabled": true }` in `devmux.config.json`
+- Add `"proxy": true` to any service — port is auto-assigned from 4000–4999
+- Use `{{PORT}}` in the command string (devmux substitutes the assigned port)
+- Services become available at `http://<service>.<project>.localhost`
+- Requires one-time system setup: Caddy as a LaunchDaemon on port 80 → devmux proxy on 1355
+- **Do NOT migrate** React Native / Expo Metro ports (8081, 19000–19002) — too tightly coupled
+
 ## Notes for AI Assistants
 
 - Always check `devmux status` before starting services

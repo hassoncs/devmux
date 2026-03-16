@@ -75,7 +75,8 @@ export function isServiceProxied(config: ResolvedConfig, serviceName: string): b
 	if (!service) return false;
 	if (service.proxy === false) return false;
 	const hasPort = getResolvedPort(config, serviceName) !== undefined;
-	if (!hasPort && !service.health) return false;
+	// Allow portless proxy when service explicitly opts in (port will be auto-assigned)
+	if (!hasPort && !service.health && service.proxy !== true) return false;
 	return true;
 }
 
