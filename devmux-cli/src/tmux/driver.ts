@@ -33,16 +33,18 @@ export function newSession(
   command: string,
   env?: Record<string, string>
 ): void {
-  const envArgs = env
-    ? Object.entries(env).flatMap(([k, v]) => ["-e", `${k}=${v}`])
-    : [];
-
-  spawnSync("tmux", ["new-session", "-d", "-s", sessionName, "-c", cwd, ...envArgs], {
+  spawnSync("tmux", ["new-session", "-d", "-s", sessionName, "-c", cwd], {
     stdio: ["pipe", "pipe", "pipe"],
   });
 
-  // send-keys avoids shell quoting issues — command content is never interpreted by a shell
-  spawnSync("tmux", ["send-keys", "-t", sessionName, command, "Enter"], {
+  // Prepend env vars inline so they survive direnv reloads and are guaranteed
+  // to reach the command process. tmux new-session -e only sets vars on the
+  // initial shell; send-keys runs after direnv fires and those vars are lost.
+  const envPrefix = env
+    ? Object.entries(env).map(([k, v]) => `${k}=${v}`).join(" ") + " "
+    : "";
+
+  spawnSync("tmux", ["send-keys", "-t", sessionName, `${envPrefix}${command}`, "Enter"], {
     stdio: ["pipe", "pipe", "pipe"],
   });
 }
