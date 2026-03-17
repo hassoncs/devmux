@@ -91,14 +91,13 @@ export async function ensureService(
         log(`   └─ port: ${resolvedPort} (instance: ${config.instanceId})`);
       }
       if (proxied) {
-        const panePid = getPanePid(sessionName);
-        registerRoute(config, serviceName, resolvedPort, panePid ?? process.pid);
-        log(`   └─ ${getServiceProxyUrl(config, serviceName)}`);
-      } else {
-        log(`   └─ http://localhost:${resolvedPort}`);
+        await registerRoute(config, serviceName, resolvedPort);
+          log(`   └─ ${getServiceProxyUrl(config, serviceName)}`);
+        } else {
+          log(`   └─ http://localhost:${resolvedPort}`);
+        }
       }
-    }
-    return { serviceName, startedByUs: false, sessionName };
+      return { serviceName, startedByUs: false, sessionName };
   }
 
   if (tmux.hasSession(sessionName)) {
@@ -127,8 +126,7 @@ export async function ensureService(
       log(`   └─ tmux session: ${sessionName}`);
       if (resolvedPort) {
         if (proxied) {
-          const panePid = getPanePid(sessionName);
-          registerRoute(config, serviceName, resolvedPort, panePid ?? process.pid);
+          await registerRoute(config, serviceName, resolvedPort);
           log(`   └─ ${getServiceProxyUrl(config, serviceName)}`);
         } else {
           log(`   └─ http://localhost:${resolvedPort}`);
@@ -205,7 +203,7 @@ export async function stopService(
 
   if (isServiceProxied(config, serviceName)) {
     try {
-      deregisterRoute(config, serviceName);
+      await deregisterRoute(config, serviceName);
     } catch {}
   }
 
@@ -403,7 +401,18 @@ function buildServiceEnv(
   
   env.DEVMUX_SERVICE = serviceName;
   env.DEVMUX_PROJECT = config.project;
-  
+
+  const service = config.services[serviceName];
+  if (service?.dependsOn) {
+    for (const dep of service.dependsOn) {
+      if (!isServiceProxied(config, dep)) continue;
+      const depPort = getResolvedPort(config, dep);
+      if (depPort === undefined) continue;
+      const key = `DEVMUX_PORT_${dep.toUpperCase().replace(/-/g, '_')}`;
+      env[key] = String(depPort);
+    }
+  }
+
   if (userEnv) {
     for (const [key, value] of Object.entries(userEnv)) {
       env[key] = value

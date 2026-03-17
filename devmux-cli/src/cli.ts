@@ -31,12 +31,8 @@ import {
 } from "./watch/index.js";
 import { diagnosePort, formatDiagnosis } from "./utils/diagnose.js";
 import { collectLocalPortReport } from "./ports/report.js";
-import {
-  getProxyStatus,
-  startProxyDaemon,
-  stopProxy,
-  listProxyRoutes,
-} from "./proxy/manager.js";
+import { listProxyRoutes } from "./proxy/manager.js";
+import { caddy } from "./proxy/caddy.js";
 
 const { version } = JSON.parse(
   readFileSync(
@@ -829,21 +825,19 @@ const dashboard = defineCommand({
 
 const proxyStart = defineCommand({
   meta: { name: "start", description: "Start the portless proxy server" },
-  async run() {
-    const config = loadConfig();
-    await startProxyDaemon(config);
-    const status = getProxyStatus(config);
-    if (status.running) {
-      console.log(`Proxy running (PID: ${status.pid}, port: ${status.port})`);
-    }
+  run() {
+    console.log("Caddy is the proxy. Manage it with:");
+    console.log("  sudo launchctl start dev.devmux.caddy   # start");
+    console.log("  sudo launchctl stop dev.devmux.caddy    # stop");
+    console.log("  sudo launchctl list | grep caddy         # check status");
   },
 });
 
 const proxyStop = defineCommand({
   meta: { name: "stop", description: "Stop the portless proxy server" },
   run() {
-    const config = loadConfig();
-    stopProxy(config);
+    console.log("Caddy is the proxy. To stop it:");
+    console.log("  sudo launchctl stop dev.devmux.caddy");
   },
 });
 
@@ -852,22 +846,21 @@ const proxyStatus = defineCommand({
   args: {
     json: { type: "boolean", description: "Output as JSON" },
   },
-  run({ args }) {
+  async run({ args }) {
     const config = loadConfig();
-    const status = getProxyStatus(config);
+    const available = await caddy.isAvailable();
 
     if (args.json) {
-      console.log(JSON.stringify(status, null, 2));
+      console.log(JSON.stringify({ available }, null, 2));
       return;
     }
 
-    if (status.running) {
-      console.log(`Proxy: Running (PID: ${status.pid})`);
-      console.log(`  Port: ${status.port}`);
-      listProxyRoutes(config);
+    if (available) {
+      console.log("Proxy: Running");
+      await listProxyRoutes(config);
     } else {
       console.log("Proxy: Not running");
-      console.log("  Start with: devmux proxy start");
+      console.log("  Start with: sudo launchctl start dev.devmux.caddy");
     }
   },
 });

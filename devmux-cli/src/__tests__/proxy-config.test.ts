@@ -33,11 +33,7 @@ describe("parseHostname", () => {
 });
 
 describe("formatUrl", () => {
-	it("includes port when not 80", () => {
-		expect(formatUrl("app.localhost", 1355)).toBe("http://app.localhost:1355");
-	});
-
-	it("omits port when 80", () => {
-		expect(formatUrl("app.localhost", 80)).toBe("http://app.localhost");
+	it("returns clean http url", () => {
+		expect(formatUrl("app.localhost")).toBe("http://app.localhost");
 	});
 });

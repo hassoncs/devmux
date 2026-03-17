@@ -7,13 +7,13 @@ DevMux includes a built-in HTTP proxy that routes named `*.localhost` URLs to yo
 ```
 Browser → http://storybook.prism.localhost
        → Caddy (port 80, system LaunchDaemon)
-       → devmux proxy daemon (port 1355)
        → storybook (auto-assigned free port, e.g. 4217)
 ```
 
-1. **Caddy** runs as a macOS LaunchDaemon on port 80 and forwards all traffic to the devmux proxy on 1355.
-2. **devmux proxy daemon** reads `~/.portless/routes.json` and routes by `Host` header.
-3. When a service with `"proxy": true` and no port starts, devmux calls `findFreePort()` to pick a free port in the 4000–4999 range, injects it as `$PORT` + `{{PORT}}`, and registers the hostname→port mapping.
+1. **Caddy** runs as a macOS LaunchDaemon on port 80, routes by `Host` header directly to the service.
+2. When a service with `"proxy": true` and no port starts, devmux calls `findFreePort()` to pick a free port in the 4000–4999 range, injects it as `$PORT` + `{{PORT}}`, and registers the hostname→port mapping via Caddy's admin API.
+
+> **Routes are ephemeral.** They are re-registered each time you run `devmux ensure <service>`.
 
 ## System Setup (one-time, per machine)
 
@@ -31,12 +31,10 @@ sudo tee /usr/local/etc/caddy/Caddyfile << 'EOF'
 {
     auto_https off
 }
-
-http:// {
-    reverse_proxy localhost:1355
-}
 EOF
 ```
+
+> **Routes are managed dynamically** — devmux registers and deregisters routes in Caddy's admin API automatically on `devmux ensure` / `devmux stop`.
 
 ### 3. Install LaunchDaemon
 
