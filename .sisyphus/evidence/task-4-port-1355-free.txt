@@ -1,0 +1,8 @@
+Task 4 — Port 1355 Verification
+Date: 2026-03-17
+
+Command: lsof -iTCP:1355 -sTCP:LISTEN
+Result: Port 1355: nothing listening
+
+The old proxy daemon (PID 50735, dist/proxy/daemon.js) was still running from a prior build.
+It was killed with `kill 50735`. Port 1355 is now free.

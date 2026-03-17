@@ -1,0 +1,27 @@
+
+> @chriscode/devmux@1.8.0 build /Users/hassoncs/Workspaces/Personal/dev/devmux/devmux-cli
+> tsup && cp -R ../skill dist/
+
+CLI Building entry: src/cli.ts, src/index.ts, src/watch/watcher-cli.ts
+CLI Using tsconfig: tsconfig.json
+CLI tsup v8.5.1
+CLI Using tsup config: /Users/hassoncs/Workspaces/Personal/dev/devmux/devmux-cli/tsup.config.ts
+CLI Target: es2022
+CLI Cleaning output folder
+ESM Build start
+ESM dist/cli.js                     25.13 KB
+ESM dist/watch/watcher-cli.js       903.00 B
+ESM dist/chunk-SKNYRR6E.js          21.20 KB
+ESM dist/index.js                   1.04 KB
+ESM dist/dashboard-QFQDRATT.js      325.00 B
+ESM dist/chunk-7NGRAOJN.js          36.58 KB
+ESM dist/chunk-J7WXG65X.js          12.85 KB
+ESM dist/chunk-32R7KDZB.js          9.92 KB
+ESM dist/server-manager-6EZWZK56.js 2.67 KB
+ESM dist/chunk-66UOCF5R.js          1.29 KB
+ESM ⚡️ Build success in 19ms
+DTS Build start
+DTS ⚡️ Build success in 1526ms
+DTS dist/cli.d.ts               20.00 B
+DTS dist/index.d.ts             17.87 KB
+DTS dist/watch/watcher-cli.d.ts 20.00 B

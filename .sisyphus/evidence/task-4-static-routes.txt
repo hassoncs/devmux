@@ -1,0 +1,27 @@
+Task 4 — Caddyfile Static Routes Verification
+Date: 2026-03-17
+
+File: /usr/local/etc/caddy/Caddyfile
+
+Contents (all static named routes preserved, no catch-all block present):
+
+{
+    auto_https off
+}
+
+http://metro.firefly-phone.localhost {
+    reverse_proxy localhost:4567 {
+        header_up Upgrade {http.upgrade}
+        header_up Connection {http.connection}
+    }
+}
+
+http://metro.waypoint.localhost {
+    reverse_proxy localhost:8022 {
+        header_up Upgrade {http.upgrade}
+        header_up Connection {http.connection}
+    }
+}
+
+Note: The catch-all `http:// { reverse_proxy localhost:1355 }` block was NOT present in the file
+(it had already been removed before this task ran). Caddy reloaded successfully.
