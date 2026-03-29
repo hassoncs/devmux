@@ -1,0 +1,36 @@
+version: 1
+artifacts:
+  devmux-cli:
+    id: devmux-cli
+    kind: cli
+    locator: .
+    entry:
+      command: devmux
+      path: bin/devmux
+    runtimeRef: node
+    subcommands:
+      - id: ensure
+        name: ensure
+      - id: status
+        name: status
+      - id: stop
+        name: stop
+      - id: ports
+        name: ports
+      - id: watch
+        name: watch
+      - id: proxy
+        name: proxy
+      - id: telemetry
+        name: telemetry
+    publishes:
+      - id: devmux-bin
+        stablePath: ~/.local/bin/devmux
+        sourceLocator: bin/devmux
+        symlink: true
+  devmux-telemetry-sdk:
+    id: devmux-telemetry-sdk
+    kind: library
+    locator: packages/devmux-telemetry/
+    packageManager: pnpm
+    packageName: devmux-telemetry

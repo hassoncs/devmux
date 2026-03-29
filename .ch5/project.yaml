@@ -1,0 +1,31 @@
+id: devmux
+version: 1
+project:
+  id: devmux
+  name: DevMux
+  kind: tool
+  lifecycle: active
+  summary: tmux-based dev service orchestrator with shared agent/human awareness
+  owners:
+    - id: chris
+      role: owner
+  tags:
+    - devtools
+    - tmux
+    - services
+    - cli
+  roots:
+    - locator: .
+      role: primary
+  repos:
+    - id: primary
+      locator: .
+      role: primary
+  docs:
+    - locator: README.md
+      role: overview
+    - locator: AGENTS.md
+      role: agent-guide
+  aliases:
+    - devmux
+    - dmx

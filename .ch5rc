@@ -1,0 +1,6 @@
+id = "devmux"
+name = "DevMux"
+kind = "tool"
+tier = "local"
+runtime = "mixed"
+manifest = ".ch5/project.yaml"

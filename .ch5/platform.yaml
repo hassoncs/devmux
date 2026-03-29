@@ -1,0 +1,17 @@
+version: 1
+platform:
+  supported:
+    os:
+      - macos
+      - linux
+    runtimes:
+      - node
+  requires:
+    - id: tmux
+      kind: runtime
+      value: tmux
+      required: true
+    - id: caddy
+      kind: runtime
+      value: caddy
+      required: false

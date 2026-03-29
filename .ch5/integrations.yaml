@@ -1,0 +1,10 @@
+version: 1
+integrations:
+  github:
+    id: github
+    provider: github
+    accountRef: personal-github
+  npm:
+    id: npm
+    provider: npm
+    networkScope: public
