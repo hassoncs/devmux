@@ -1,6 +1,10 @@
-# Portless Proxy — Named localhost URLs on Port 80
+# Portless Proxy — Named Service URLs on Port 80
 
-DevMux includes a built-in HTTP proxy that routes named `*.localhost` URLs to your services — no port numbers needed in the browser.
+DevMux includes a built-in HTTP proxy that routes named hostnames to your
+services — no port numbers needed in the browser.
+
+Default local behavior uses `*.localhost`, but shared hosts can and should use a
+real LAN domain like `*.town.lan`.
 
 ## How It Works
 
@@ -16,6 +20,17 @@ Browser → http://storybook.prism.localhost
 > **Routes are ephemeral.** They are re-registered each time you run `devmux ensure <service>`.
 
 ## System Setup (one-time, per machine)
+
+Fast path on macOS:
+
+```bash
+brew install caddy
+sudo devmux proxy setup --apply
+devmux proxy doctor
+```
+
+If you prefer to see the exact shell commands first, run `devmux proxy setup` or
+write a reusable installer with `devmux proxy setup --script`.
 
 ### 1. Install Caddy
 
@@ -99,6 +114,7 @@ Enable the proxy in your `devmux.config.json`:
 ```
 
 Key points:
+
 - `"proxy": { "enabled": true }` — turns on the proxy for this project
 - `"proxy": true` on a service — opts the service into portless routing
 - No `health` or `port` needed — devmux auto-assigns and creates a port health check
@@ -110,6 +126,43 @@ The service will be available at: `http://<service>.<project>.localhost`
 ## Hostname Pattern
 
 Default: `{service}.{project}.localhost`
+
+## Shared-host / LAN pattern
+
+For shared hosts where other machines need to open the same URLs, set either:
+
+- per-repo:
+
+```json
+{
+  "proxy": {
+    "enabled": true,
+    "hostnamePattern": "{service}.{project}.town.lan"
+  }
+}
+```
+
+- or globally on the host:
+
+```bash
+export DEVMUX_HOSTNAME_PATTERN={service}.{project}.town.lan
+```
+
+Priority order:
+
+1. repo `proxy.hostnamePattern`
+2. `DEVMUX_HOSTNAME_PATTERN`
+3. fallback `{service}.{project}.localhost`
+
+Example shared-host URLs:
+
+- `http://web.liftlog.town.lan`
+- `http://web.waypoint.town.lan`
+- `http://web-amen.slopcade.town.lan`
+- `http://storybook.pencil.town.lan`
+
+These require DNS to resolve the chosen wildcard domain to the host running
+Caddy/devmux.
 
 Override globally in the config:
 
@@ -150,6 +203,7 @@ Some ports are too tightly coupled to their tooling to use `{{PORT}}`:
 ## Viewing Active Routes
 
 ```bash
+devmux proxy doctor     # Diagnose the managed Caddy setup
 devmux proxy routes     # List all active hostname → port mappings
 devmux status           # Shows proxyUrl for each proxied service
 ```

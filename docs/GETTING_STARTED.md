@@ -152,6 +152,32 @@ pnpm svc:status
 # API should be cleaned up automatically
 ```
 
+## Optional: Port-Free URLs on macOS
+
+If you want `http://web.my-app.localhost` style URLs, install Caddy once and let
+devmux manage the system files for you:
+
+```bash
+brew install caddy
+sudo devmux proxy setup --apply
+devmux proxy doctor
+```
+
+Then enable the proxy in `devmux.config.json`:
+
+```json
+{
+  "proxy": { "enabled": true },
+  "services": {
+    "web": {
+      "cwd": ".",
+      "command": "pnpm dev --port {{PORT}}",
+      "proxy": true
+    }
+  }
+}
+```
+
 ## Verifying Agent Compatibility
 
 To test that agents will work correctly:

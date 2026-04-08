@@ -1,7 +1,14 @@
 #!/usr/bin/env node
 
 import { defineCommand, runMain } from "citty";
-import { readFileSync, mkdirSync, existsSync, cpSync } from "node:fs";
+import {
+  readFileSync,
+  mkdirSync,
+  existsSync,
+  cpSync,
+  chmodSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execa } from "execa";
@@ -33,6 +40,7 @@ import { diagnosePort, formatDiagnosis } from "./utils/diagnose.js";
 import { collectLocalPortReport } from "./ports/report.js";
 import { listProxyRoutes } from "./proxy/manager.js";
 import { caddy } from "./proxy/caddy.js";
+import * as proxySystem from "./proxy/system.js";
 
 const { version } = JSON.parse(
   readFileSync(
@@ -823,13 +831,161 @@ const dashboard = defineCommand({
   },
 });
 
+function printProxySetupCommands(commands: string[]): void {
+  console.log("Run these commands once on the machine hosting devmux:");
+  console.log("");
+  for (const command of commands) {
+    console.log(command);
+    console.log("");
+  }
+}
+
+const proxySetup = defineCommand({
+  meta: {
+    name: "setup",
+    description: "Install the managed Caddy config for portless proxying",
+  },
+  args: {
+    apply: {
+      type: "boolean",
+      description: "Write the Caddyfile/LaunchDaemon and load it (requires sudo)",
+    },
+    json: { type: "boolean", description: "Output setup details as JSON" },
+    script: {
+      type: "boolean",
+      description: "Write a reusable shell script next to the repo root",
+    },
+  },
+  async run({ args }) {
+    const report = proxySystem.getProxyDoctorReport(await caddy.isAvailable());
+
+    if (!report.supported) {
+      console.error("Managed proxy setup is currently supported on macOS only.");
+      process.exit(1);
+    }
+
+    if (!report.caddyBinaryPath || !report.caddyBinaryExists) {
+      console.error("❌ Caddy is not installed.");
+      console.error("   Install it with: brew install caddy");
+      process.exit(1);
+    }
+
+    const commands = proxySystem.buildProxySetupCommands(report.caddyBinaryPath);
+
+    if (args.json) {
+      console.log(
+        JSON.stringify(
+          {
+            ...report,
+            commands,
+          },
+          null,
+          2,
+        ),
+      );
+      return;
+    }
+
+    if (args.script) {
+      const scriptPath = join(process.cwd(), "devmux-proxy-setup.sh");
+      const script = `#!/usr/bin/env bash\nset -euo pipefail\n\n${commands.join("\n\n")}\n`;
+      mkdirSync(dirname(scriptPath), { recursive: true });
+      writeFileSync(scriptPath, script, "utf8");
+      chmodSync(scriptPath, 0o755);
+      console.log(`✅ Wrote ${scriptPath}`);
+      console.log(`   Run it with: sudo "${scriptPath}"`);
+      if (!args.apply) return;
+    }
+
+    if (args.apply) {
+      if (typeof process.getuid !== "function" || process.getuid() !== 0) {
+        console.error("❌ --apply must be run as root.");
+        console.error("   Run: sudo devmux proxy setup --apply");
+        process.exit(1);
+      }
+
+      proxySystem.writeManagedProxyFiles(report.caddyBinaryPath);
+
+      await execa("launchctl", ["unload", "-w", proxySystem.DEFAULT_LAUNCHD_PLIST_PATH], {
+        reject: false,
+        stdout: "ignore",
+        stderr: "ignore",
+      });
+      const result = await execa(
+        "launchctl",
+        ["load", "-w", proxySystem.DEFAULT_LAUNCHD_PLIST_PATH],
+        {
+          reject: false,
+          stdout: "inherit",
+          stderr: "inherit",
+        },
+      );
+      if (result.exitCode !== 0) {
+        console.error("❌ Failed to load LaunchDaemon.");
+        process.exit(result.exitCode ?? 1);
+      }
+
+      console.log(`✅ Installed managed proxy (${proxySystem.DEVMUX_CADDY_LABEL})`);
+      console.log(`   └─ Caddyfile: ${report.caddyfilePath}`);
+      console.log(`   └─ LaunchDaemon: ${report.launchdPlistPath}`);
+      return;
+    }
+
+    console.log("Managed proxy setup is available.");
+    console.log("Run `sudo devmux proxy setup --apply` to install it automatically.");
+    console.log("");
+    printProxySetupCommands(commands);
+  },
+});
+
+const proxyDoctor = defineCommand({
+  meta: { name: "doctor", description: "Diagnose managed proxy readiness" },
+  args: {
+    json: { type: "boolean", description: "Output as JSON" },
+  },
+  async run({ args }) {
+    const report = proxySystem.getProxyDoctorReport(await caddy.isAvailable());
+    const lines = proxySystem.formatProxyDoctorReport(report);
+
+    if (args.json) {
+      console.log(JSON.stringify(report, null, 2));
+      return;
+    }
+
+    console.log("Proxy Doctor");
+    console.log("════════════");
+    for (const line of lines) {
+      console.log(line);
+    }
+  },
+});
+
+const proxyRoutes = defineCommand({
+  meta: { name: "routes", description: "List active proxy routes" },
+  async run() {
+    const config = loadConfig();
+    if (!(await caddy.isAvailable())) {
+      console.error("Proxy is not running.");
+      console.error("Run `devmux proxy doctor` for setup help.");
+      process.exit(1);
+    }
+    await listProxyRoutes(config);
+  },
+});
+
 const proxyStart = defineCommand({
   meta: { name: "start", description: "Start the portless proxy server" },
-  run() {
-    console.log("Caddy is the proxy. Manage it with:");
-    console.log("  sudo launchctl start dev.devmux.caddy   # start");
-    console.log("  sudo launchctl stop dev.devmux.caddy    # stop");
-    console.log("  sudo launchctl list | grep caddy         # check status");
+  async run() {
+    if (await caddy.isAvailable()) {
+      console.log("Proxy: Running");
+      return;
+    }
+    console.log("Caddy is the proxy.");
+    console.log("If this machine is not configured yet, run:");
+    console.log("  sudo devmux proxy setup --apply");
+    console.log("");
+    console.log("If it is already installed, start it with:");
+    console.log(`  sudo launchctl kickstart -k system/${proxySystem.DEVMUX_CADDY_LABEL}`);
   },
 });
 
@@ -837,7 +993,7 @@ const proxyStop = defineCommand({
   meta: { name: "stop", description: "Stop the portless proxy server" },
   run() {
     console.log("Caddy is the proxy. To stop it:");
-    console.log("  sudo launchctl stop dev.devmux.caddy");
+    console.log(`  sudo launchctl bootout system/${proxySystem.DEVMUX_CADDY_LABEL}`);
   },
 });
 
@@ -849,9 +1005,10 @@ const proxyStatus = defineCommand({
   async run({ args }) {
     const config = loadConfig();
     const available = await caddy.isAvailable();
+    const report = proxySystem.getProxyDoctorReport(available);
 
     if (args.json) {
-      console.log(JSON.stringify({ available }, null, 2));
+      console.log(JSON.stringify({ available, report }, null, 2));
       return;
     }
 
@@ -860,7 +1017,9 @@ const proxyStatus = defineCommand({
       await listProxyRoutes(config);
     } else {
       console.log("Proxy: Not running");
-      console.log("  Start with: sudo launchctl start dev.devmux.caddy");
+      for (const line of proxySystem.formatProxyDoctorReport(report)) {
+        console.log(`  ${line}`);
+      }
     }
   },
 });
@@ -871,9 +1030,12 @@ const proxy = defineCommand({
     description: "Manage portless proxy for .localhost URLs",
   },
   subCommands: {
+    setup: proxySetup,
+    doctor: proxyDoctor,
     start: proxyStart,
     stop: proxyStop,
     status: proxyStatus,
+    routes: proxyRoutes,
   },
 });
 

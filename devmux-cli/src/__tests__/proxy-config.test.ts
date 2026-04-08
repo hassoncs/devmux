@@ -1,39 +1,75 @@
 import { describe, it, expect } from "vitest";
-import { parseHostname, formatUrl } from "../proxy/manager.js";
+import {
+  parseHostname,
+  formatUrl,
+  getServiceHostname,
+} from "../proxy/manager.js";
 
 describe("parseHostname", () => {
-	it("appends .localhost to bare names", () => {
-		expect(parseHostname("myapp")).toBe("myapp.localhost");
-	});
+  it("appends .localhost to bare names", () => {
+    expect(parseHostname("myapp")).toBe("myapp.localhost");
+  });
 
-	it("preserves existing .localhost suffix", () => {
-		expect(parseHostname("myapp.localhost")).toBe("myapp.localhost");
-	});
+  it("preserves existing .localhost suffix", () => {
+    expect(parseHostname("myapp.localhost")).toBe("myapp.localhost");
+  });
 
-	it("strips protocol prefixes", () => {
-		expect(parseHostname("http://myapp")).toBe("myapp.localhost");
-		expect(parseHostname("https://myapp.localhost")).toBe("myapp.localhost");
-	});
+  it("preserves fully qualified hostnames", () => {
+    expect(parseHostname("api.town.lan")).toBe("api.town.lan");
+    expect(parseHostname("https://storybook.pencil.town.lan")).toBe(
+      "storybook.pencil.town.lan",
+    );
+  });
 
-	it("supports dotted subdomains", () => {
-		expect(parseHostname("api.myapp")).toBe("api.myapp.localhost");
-	});
+  it("strips protocol prefixes", () => {
+    expect(parseHostname("http://myapp")).toBe("myapp.localhost");
+    expect(parseHostname("https://myapp.localhost")).toBe("myapp.localhost");
+  });
 
-	it("rejects empty hostnames", () => {
-		expect(() => parseHostname("")).toThrow("cannot be empty");
-	});
+  it("supports dotted subdomains", () => {
+    expect(parseHostname("api.myapp")).toBe("api.myapp.localhost");
+  });
 
-	it("rejects consecutive dots", () => {
-		expect(() => parseHostname("my..app")).toThrow("consecutive dots");
-	});
+  it("rejects empty hostnames", () => {
+    expect(() => parseHostname("")).toThrow("cannot be empty");
+  });
 
-	it("rejects invalid characters", () => {
-		expect(() => parseHostname("my_app")).toThrow("must contain only");
-	});
+  it("rejects consecutive dots", () => {
+    expect(() => parseHostname("my..app")).toThrow("consecutive dots");
+  });
+
+  it("rejects invalid characters", () => {
+    expect(() => parseHostname("my_app")).toThrow("must contain only");
+  });
 });
 
 describe("formatUrl", () => {
-	it("returns clean http url", () => {
-		expect(formatUrl("app.localhost")).toBe("http://app.localhost");
-	});
+  it("returns clean http url", () => {
+    expect(formatUrl("app.localhost")).toBe("http://app.localhost");
+  });
+});
+
+describe("getServiceHostname", () => {
+  it("uses DEVMUX_HOSTNAME_PATTERN when config does not specify one", () => {
+    const prev = process.env.DEVMUX_HOSTNAME_PATTERN;
+    process.env.DEVMUX_HOSTNAME_PATTERN = "{service}.{project}.town.lan";
+    try {
+      expect(
+        getServiceHostname(
+          {
+            project: "waypoint",
+            version: 1,
+            services: { web: { cwd: ".", command: "pnpm dev" } },
+            configRoot: "/tmp",
+            resolvedSessionPrefix: "omo-waypoint",
+            instanceId: "",
+          },
+          "web",
+        ),
+      ).toBe("web.waypoint.town.lan");
+    } finally {
+      if (prev === undefined) delete process.env.DEVMUX_HOSTNAME_PATTERN;
+      else process.env.DEVMUX_HOSTNAME_PATTERN = prev;
+    }
+  });
 });

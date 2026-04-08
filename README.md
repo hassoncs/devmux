@@ -107,6 +107,20 @@ pnpm dev        # API starts in background, cleans up on Ctrl+C
 pnpm svc:status # See what's running
 ```
 
+### 5. Optional: enable port-free URLs
+
+If you want `http://web.my-app.localhost` style URLs, devmux includes a managed
+Caddy setup flow on macOS:
+
+```bash
+brew install caddy
+sudo devmux proxy setup --apply
+devmux proxy doctor
+```
+
+Then add `"proxy": { "enabled": true }` to `devmux.config.json` and opt each
+service in with `"proxy": true`.
+
 ## How It Works
 
 ### Health-first, tmux-second
