@@ -1,0 +1,120 @@
+# =============================================================================
+# Bot Town Daemon Docker Compose Configuration
+# Multi-platform deployment for Mac, Dell, and Fly.io
+# =============================================================================
+
+version: '3.8'
+
+services:
+  # -----------------------------------------------------------------------------
+  # Bot Town Daemon - Universal Worker
+  # -----------------------------------------------------------------------------
+  daemon:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.daemon
+      platforms:
+        - linux/amd64
+        - linux/arm64
+    image: bottown-daemon:latest
+    container_name: bottown-daemon-${DAEMON_NODE_ID:-local}
+    restart: unless-stopped
+    
+    environment:
+      # Required: Bot Town runtime connection
+      - TOWN_SERVER_URL=${TOWN_SERVER_URL:-ws://town.lan:8091}
+      - TOWN_SERVER_URLS=${TOWN_SERVER_URLS:-}
+      
+      # Node identity
+      - DAEMON_NODE_ID=${DAEMON_NODE_ID:-}
+      - DAEMON_NODE_ID_TEMPLATE=${DAEMON_NODE_ID_TEMPLATE:-daemon-${HOSTNAME}}
+      
+      # Daemon configuration
+      - DAEMON_KIND=${DAEMON_KIND:-server}
+      - DAEMON_CAPABILITIES=${DAEMON_CAPABILITIES:-opencode,git,browser}
+      - DAEMON_AUTH_TOKEN=${DAEMON_AUTH_TOKEN:-}
+      - DAEMON_METADATA=${DAEMON_METADATA:-}
+      
+      # OpenCode configuration
+      - OPENCODE_WORKER_MODE=${OPENCODE_WORKER_MODE:-native}
+      - OPENCODE_SERVER_URL=${OPENCODE_SERVER_URL:-http://127.0.0.1:4096}
+      
+      # Session management
+      - HEARTBEAT_INTERVAL_MS=${HEARTBEAT_INTERVAL_MS:-30000}
+      - STALE_SESSION_PRUNE_INTERVAL_MS=${STALE_SESSION_PRUNE_INTERVAL_MS:-900000}
+      - STALE_SESSION_MAX_AGE_MS=${STALE_SESSION_MAX_AGE_MS:-3600000}
+      
+      # Pre-warmed rooms (JSON array)
+      - PREWARM_ROOMS=${PREWARM_ROOMS:-}
+      
+      # Home directory for OpenCode
+      - HOME=/workspace
+    
+    volumes:
+      # OpenCode configuration (read-only, synced from host)
+      - ${OPENCODE_CONFIG_PATH:-~/.config/opencode}:/workspace/.config/opencode:ro
+      
+      # OpenCode skills (read-only, synced from host)
+      - ${OPENCODE_SKILLS_PATH:-~/.claude/skills}:/workspace/.claude/skills:ro
+      
+      # OpenCode local state (persistent)
+      - daemon-opencode-data:/workspace/.local/share/opencode
+      
+      # Workspace for sessions
+      - daemon-workspace:/workspace/repos
+      
+      # Bot Town agent session mapping
+      - daemon-agent-sessions:/app/data
+      
+      # Docker socket (optional, for containerized mode)
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    
+    ports:
+      # OpenCode server port (for debugging and attached mode)
+      - "${OPENCODE_PORT:-4096}:4096"
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4096/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "daemon_node_id,daemon_kind"
+
+# -----------------------------------------------------------------------------
+# Persistent volumes
+# -----------------------------------------------------------------------------
+volumes:
+  daemon-opencode-data:
+    driver: local
+  daemon-workspace:
+    driver: local
+  daemon-agent-sessions:
+    driver: local
+
+# =============================================================================
+# USAGE
+# =============================================================================
+#
+# Start daemon:
+#   docker-compose -f docker/docker-compose.daemon.yml up -d
+#
+# Start with specific node ID:
+#   DAEMON_NODE_ID=dell-worker-1 docker-compose -f docker/docker-compose.daemon.yml up -d
+#
+# View logs:
+#   docker-compose -f docker/docker-compose.daemon.yml logs -f daemon
+#
+# Stop daemon:
+#   docker-compose -f docker/docker-compose.daemon.yml down
+#
+# Stop and remove volumes:
+#   docker-compose -f docker/docker-compose.daemon.yml down -v
+#
+# =============================================================================

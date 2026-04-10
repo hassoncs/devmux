@@ -5,3 +5,15 @@ dist
 *.log
 .DS_Store
 .claude
+.env
+.env.local
+.env.*.local
+.hush.local
+.sisyphus/
+.worktrees/
+*.tsbuildinfo
+.mcp_data/
+
+# Standard patterns
+.DS_Store
+.mutagen.yml

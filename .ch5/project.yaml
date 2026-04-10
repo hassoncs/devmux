@@ -5,7 +5,7 @@ project:
   name: DevMux
   kind: tool
   lifecycle: active
-  summary: tmux-based dev service orchestrator with shared agent/human awareness
+  summary: tmux-based dev service orchestrator that gives humans and AI agents shared awareness of running services, preventing port conflicts and accidental restarts.
   owners:
     - id: chris
       role: owner
@@ -14,6 +14,30 @@ project:
     - tmux
     - services
     - cli
+    - session-registry
+    - health-first
+    - idempotent-ensure
+    - error-watching
+  key_concepts:
+    - tmux session registry
+    - health-first detection
+    - idempotent ensure
+    - multi-worktree isolation
+    - error watching
+    - browser telemetry
+  related_projects:
+    - id: ch5-projects
+      relationship: integrates-with
+    - id: hush
+      relationship: integrates-with
+    - id: firefly-monorepo
+      relationship: integrates-with
+    - id: opencode-ecosystem
+      relationship: integrates-with
+    - id: automation-core
+      relationship: integrates-with
+  zoekt:
+    enabled: true
   roots:
     - locator: .
       role: primary

@@ -14,10 +14,12 @@ describe("parseHostname", () => {
     expect(parseHostname("myapp.localhost")).toBe("myapp.localhost");
   });
 
-  it("preserves fully qualified hostnames", () => {
-    expect(parseHostname("api.town.lan")).toBe("api.town.lan");
-    expect(parseHostname("https://storybook.pencil.town.lan")).toBe(
-      "storybook.pencil.town.lan",
+  it("rejects non-localhost fully qualified hostnames", () => {
+    expect(() => parseHostname("api.town.lan")).toThrow(
+      "must end with .localhost",
+    );
+    expect(() => parseHostname("https://storybook.pencil.town.lan")).toThrow(
+      "must end with .localhost",
     );
   });
 
@@ -50,26 +52,36 @@ describe("formatUrl", () => {
 });
 
 describe("getServiceHostname", () => {
-  it("uses DEVMUX_HOSTNAME_PATTERN when config does not specify one", () => {
-    const prev = process.env.DEVMUX_HOSTNAME_PATTERN;
-    process.env.DEVMUX_HOSTNAME_PATTERN = "{service}.{project}.town.lan";
-    try {
-      expect(
-        getServiceHostname(
-          {
-            project: "waypoint",
-            version: 1,
-            services: { web: { cwd: ".", command: "pnpm dev" } },
-            configRoot: "/tmp",
-            resolvedSessionPrefix: "omo-waypoint",
-            instanceId: "",
-          },
-          "web",
-        ),
-      ).toBe("web.waypoint.town.lan");
-    } finally {
-      if (prev === undefined) delete process.env.DEVMUX_HOSTNAME_PATTERN;
-      else process.env.DEVMUX_HOSTNAME_PATTERN = prev;
-    }
+  it("defaults to localhost hostnames", () => {
+    expect(
+      getServiceHostname(
+        {
+          project: "waypoint",
+          version: 1,
+          services: { web: { cwd: ".", command: "pnpm dev" } },
+          configRoot: "/tmp",
+          resolvedSessionPrefix: "omo-waypoint",
+          instanceId: "",
+        },
+        "web",
+      ),
+    ).toBe("web.waypoint.localhost");
+  });
+
+  it("allows an explicit per-project hostname pattern override", () => {
+    expect(
+      getServiceHostname(
+        {
+          project: "waypoint",
+          version: 1,
+          proxy: { enabled: true, hostnamePattern: "{service}.localhost" },
+          services: { web: { cwd: ".", command: "pnpm dev" } },
+          configRoot: "/tmp",
+          resolvedSessionPrefix: "omo-waypoint",
+          instanceId: "",
+        },
+        "web",
+      ),
+    ).toBe("web.localhost");
   });
 });

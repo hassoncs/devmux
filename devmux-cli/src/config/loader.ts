@@ -61,6 +61,8 @@ function resolveLoadedConfig(
     throw new Error(`Invalid devmux config in ${configPath}`);
   }
 
+  validateProxyHostnamePattern(config.proxy?.hostnamePattern, configPath);
+
   const configRoot = dirname(configPath);
   const resolvedSessionPrefix = config.sessionPrefix ?? `omo-${config.project}`;
 
@@ -81,6 +83,33 @@ function validateConfig(config: unknown): config is DevMuxConfig {
   if (!c.services || typeof c.services !== "object") return false;
 
   return true;
+}
+
+function validateProxyHostnamePattern(
+  hostnamePattern: string | undefined,
+  configPath: string,
+): void {
+  if (hostnamePattern === undefined) return;
+
+  const preview = hostnamePattern
+    .replace(/\{service\}/g, "service")
+    .replace(/\{project\}/g, "project")
+    .trim()
+    .replace(/^https?:\/\//, "")
+    .split("/")[0]
+    .toLowerCase();
+
+  if (!preview) {
+    throw new Error(
+      `Invalid devmux config in ${configPath}: proxy.hostnamePattern cannot be empty`,
+    );
+  }
+
+  if (!preview.endsWith(".localhost") && preview.split(".").length >= 3) {
+    throw new Error(
+      `Invalid devmux config in ${configPath}: proxy.hostnamePattern must resolve to a .localhost hostname for local devmux routing`,
+    );
+  }
 }
 
 export function formatNoConfigError(): string {

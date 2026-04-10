@@ -3,8 +3,8 @@
 DevMux includes a built-in HTTP proxy that routes named hostnames to your
 services — no port numbers needed in the browser.
 
-Default local behavior uses `*.localhost`, but shared hosts can and should use a
-real LAN domain like `*.town.lan`.
+DevMux's built-in proxy story is local-box-first: proxied services live on
+`*.localhost` for the machine running devmux.
 
 ## How It Works
 
@@ -127,44 +127,14 @@ The service will be available at: `http://<service>.<project>.localhost`
 
 Default: `{service}.{project}.localhost`
 
-## Shared-host / LAN pattern
+That hostname always refers to the current box running devmux. If you want a
+different local shape, set `proxy.hostnamePattern` in that repo, but it still
+must resolve to `*.localhost`. Devmux will not pick up a machine-wide hostname
+override for proxy routes, and local proxy config is not the place for external
+network naming.
 
-For shared hosts where other machines need to open the same URLs, set either:
-
-- per-repo:
-
-```json
-{
-  "proxy": {
-    "enabled": true,
-    "hostnamePattern": "{service}.{project}.town.lan"
-  }
-}
-```
-
-- or globally on the host:
-
-```bash
-export DEVMUX_HOSTNAME_PATTERN={service}.{project}.town.lan
-```
-
-Priority order:
-
-1. repo `proxy.hostnamePattern`
-2. `DEVMUX_HOSTNAME_PATTERN`
-3. fallback `{service}.{project}.localhost`
-
-Example shared-host URLs:
-
-- `http://web.liftlog.town.lan`
-- `http://web.waypoint.town.lan`
-- `http://web-amen.slopcade.town.lan`
-- `http://storybook.pencil.town.lan`
-
-These require DNS to resolve the chosen wildcard domain to the host running
-Caddy/devmux.
-
-Override globally in the config:
+Override per project in the config if you want something shorter on the same
+machine:
 
 ```json
 {
@@ -174,6 +144,8 @@ Override globally in the config:
   }
 }
 ```
+
+Non-`.localhost` hostname patterns are rejected for local devmux proxy routing.
 
 ## Services with Fixed Ports
 

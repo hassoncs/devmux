@@ -36,6 +36,11 @@ export function parseHostname(input: string): string {
       `Invalid hostname "${name}": must contain only lowercase letters, digits, hyphens, and dots`,
     );
   }
+  if (!hostname.endsWith(".localhost")) {
+    throw new Error(
+      `Invalid hostname "${hostname}": local devmux proxy hostnames must end with .localhost`,
+    );
+  }
   return hostname;
 }
 
@@ -66,9 +71,7 @@ export function getServiceHostname(
   serviceName: string,
 ): string {
   const pattern =
-    config.proxy?.hostnamePattern ??
-    process.env.DEVMUX_HOSTNAME_PATTERN ??
-    "{service}.{project}.localhost";
+    config.proxy?.hostnamePattern ?? "{service}.{project}.localhost";
   const hostname = pattern
     .replace(/\{service\}/g, serviceName)
     .replace(/\{project\}/g, config.project);

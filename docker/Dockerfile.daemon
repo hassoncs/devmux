@@ -1,0 +1,259 @@
+# =============================================================================
+# Universal Bot Town Daemon + DevTools + OpenCode Setup
+# Multi-platform: Mac (ARM64), Dell (AMD64), Fly.io
+# =============================================================================
+# Build once, run anywhere with auto-configuration via env vars.
+#
+# REQUIRED ENV VARS:
+#   TOWN_SERVER_URL or TOWN_SERVER_URLS - Bot Town runtime WebSocket endpoint(s)
+#   DAEMON_NODE_ID - Unique node ID (auto-derived if not set)
+#
+# OPTIONAL ENV VARS:
+#   DAEMON_KIND - "laptop" | "server" | "cloud" (auto-detected)
+#   DAEMON_CAPABILITIES - Comma-separated: "opencode,git,browser"
+#   DAEMON_AUTH_TOKEN - Bearer token for WebSocket auth
+#   PREWARM_ROOMS - JSON array of agents to keep warm
+#   HEARTBEAT_INTERVAL_MS - Default: 30000
+#   OPENCODE_WORKER_MODE - "worker" | "attached" | "native"
+#
+# DevTools included: rg, fd, jq, fzf, bat, eza, git, ssh, rsync, curl, wget
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Stage 1: Build dependencies
+# -----------------------------------------------------------------------------
+FROM node:20-slim AS builder
+
+WORKDIR /build
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install pnpm
+RUN npm install -g pnpm typescript
+
+# -----------------------------------------------------------------------------
+# Stage 2: Runtime image with all tools
+# -----------------------------------------------------------------------------
+FROM node:20-slim AS runtime
+
+# Prevent interactive prompts
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=UTC
+
+# -----------------------------------------------------------------------------
+# Install DevTools Stack
+# -----------------------------------------------------------------------------
+RUN apt-get update && apt-get install -y \
+    # Core utilities
+    curl \
+    wget \
+    git \
+    ssh \
+    rsync \
+    ca-certificates \
+    unzip \
+    xz-utils \
+    # Build tools (for native modules)
+    build-essential \
+    python3 \
+    python3-pip \
+    # Additional useful tools
+    procps \
+    htop \
+    vim \
+    nano \
+    tree \
+    # jq (JSON processor)
+    jq \
+    # fzf dependencies
+    fzf \
+    # Clean up
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# -----------------------------------------------------------------------------
+# Install ripgrep (rg) - Latest version
+# -----------------------------------------------------------------------------
+RUN RG_VERSION=$(curl -s https://api.github.com/repos/BurntSushi/ripgrep/releases/latest | grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/') \
+    && curl -LO "https://github.com/BurntSushi/ripgrep/releases/download/${RG_VERSION}/ripgrep-${RG_VERSION}-x86_64-unknown-linux-musl.tar.gz" \
+    && tar -xzf "ripgrep-${RG_VERSION}-x86_64-unknown-linux-musl.tar.gz" \
+    && cp "ripgrep-${RG_VERSION}-x86_64-unknown-linux-musl/rg" /usr/local/bin/ \
+    && rm -rf "ripgrep-${RG_VERSION}-x86_64-unknown-linux-musl" "ripgrep-${RG_VERSION}-x86_64-unknown-linux-musl.tar.gz" \
+    && rg --version
+
+# -----------------------------------------------------------------------------
+# Install fd (fd-find) - Modern find alternative
+# -----------------------------------------------------------------------------
+RUN FD_VERSION=$(curl -s https://api.github.com/repos/sharkdp/fd/releases/latest | grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/') \
+    && ARCH=$(uname -m | sed 's/aarch64/arm64/;s/x86_64/amd64/') \
+    && curl -LO "https://github.com/sharkdp/fd/releases/download/v${FD_VERSION}/fd-v${FD_VERSION}-${ARCH}-unknown-linux-gnu.tar.gz" \
+    && tar -xzf "fd-v${FD_VERSION}-${ARCH}-unknown-linux-gnu.tar.gz" \
+    && cp "fd-v${FD_VERSION}-${ARCH}-unknown-linux-gnu/fd" /usr/local/bin/ \
+    && rm -rf "fd-v${FD_VERSION}-${ARCH}-unknown-linux-gnu" "fd-v${FD_VERSION}-${ARCH}-unknown-linux-gnu.tar.gz" \
+    && fd --version
+
+# -----------------------------------------------------------------------------
+# Install bat - Cat with syntax highlighting
+# -----------------------------------------------------------------------------
+RUN BAT_VERSION=$(curl -s https://api.github.com/repos/sharkdp/bat/releases/latest | grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/') \
+    && ARCH=$(uname -m | sed 's/aarch64/arm64/;s/x86_64/amd64/') \
+    && curl -LO "https://github.com/sharkdp/bat/releases/download/v${BAT_VERSION}/bat-v${BAT_VERSION}-${ARCH}-unknown-linux-gnu.tar.gz" \
+    && tar -xzf "bat-v${BAT_VERSION}-${ARCH}-unknown-linux-gnu.tar.gz" \
+    && cp "bat-v${BAT_VERSION}-${ARCH}-unknown-linux-gnu/bat" /usr/local/bin/ \
+    && rm -rf "bat-v${BAT_VERSION}-${ARCH}-unknown-linux-gnu" "bat-v${BAT_VERSION}-${ARCH}-unknown-linux-gnu.tar.gz" \
+    && bat --version
+
+# -----------------------------------------------------------------------------
+# Install eza - Modern ls replacement
+# -----------------------------------------------------------------------------
+RUN EZA_VERSION=$(curl -s https://api.github.com/repos/eza-community/eza/releases/latest | grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/') \
+    && ARCH=$(uname -m | sed 's/aarch64/arm64/;s/x86_64/x86_64/') \
+    && curl -LO "https://github.com/eza-community/eza/releases/download/v${EZA_VERSION}/eza_${ARCH}-unknown-linux-gnu.tar.gz" \
+    && tar -xzf "eza_${ARCH}-unknown-linux-gnu.tar.gz" \
+    && mv eza /usr/local/bin/ \
+    && rm -f "eza_${ARCH}-unknown-linux-gnu.tar.gz" \
+    && eza --version
+
+# -----------------------------------------------------------------------------
+# Install OpenCode CLI
+# -----------------------------------------------------------------------------
+# Detect architecture and download appropriate binary
+RUN ARCH=$(uname -m) \
+    && if [ "$ARCH" = "aarch64" ]; then \
+         OPENCODE_ARCH="linux-arm64"; \
+       else \
+         OPENCODE_ARCH="linux-x64"; \
+       fi \
+    && curl -L "https://github.com/opencode-ai/opencode/releases/latest/download/opencode-${OPENCODE_ARCH}.tar.gz" -o /tmp/opencode.tar.gz \
+    && tar -xzf /tmp/opencode.tar.gz -C /usr/local/bin --strip-components=1 \
+    && rm /tmp/opencode.tar.gz \
+    && opencode --version
+
+# -----------------------------------------------------------------------------
+# Create workspace directories
+# -----------------------------------------------------------------------------
+RUN mkdir -p \
+    /workspace/repos \
+    /workspace/global \
+    /workspace/ipc/messages \
+    /workspace/ipc/tasks \
+    /workspace/ipc/input \
+    /workspace/.config/opencode \
+    /workspace/.local/share/opencode \
+    /workspace/.claude/skills \
+    && chmod -R 777 /workspace
+
+# -----------------------------------------------------------------------------
+# Set up non-root user
+# -----------------------------------------------------------------------------
+RUN groupadd -r daemonuser && useradd -r -g daemonuser -d /workspace -s /bin/bash daemonuser \
+    && usermod -aG sudo daemonuser \
+    && echo "daemonuser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+# -----------------------------------------------------------------------------
+# Copy OpenCode configuration and skills (populated at runtime or via volume)
+# -----------------------------------------------------------------------------
+RUN chown -R daemonuser:daemonuser /workspace
+
+# -----------------------------------------------------------------------------
+# Environment Configuration
+# -----------------------------------------------------------------------------
+# Node ID template (can be overridden)
+ENV DAEMON_NODE_ID_TEMPLATE="${DAEMON_NODE_ID_TEMPLATE:-daemon-${HOSTNAME}}"
+
+# Default daemon kind (auto-detected: laptop/server/cloud)
+ENV DAEMON_KIND="${DAEMON_KIND:-server}"
+
+# Default capabilities
+ENV DAEMON_CAPABILITIES="${DAEMON_CAPABILITIES:-opencode,git,browser}"
+
+# OpenCode server URL (for attached mode)
+ENV OPENCODE_SERVER_URL="${OPENCODE_SERVER_URL:-http://127.0.0.1:4096}"
+
+# OpenCode worker mode
+ENV OPENCODE_WORKER_MODE="${OPENCODE_WORKER_MODE:-native}"
+
+# Heartbeat interval
+ENV HEARTBEAT_INTERVAL_MS="${HEARTBEAT_INTERVAL_MS:-30000}"
+
+# Session pruning
+ENV STALE_SESSION_PRUNE_INTERVAL_MS="${STALE_SESSION_PRUNE_INTERVAL_MS:-900000}"
+ENV STALE_SESSION_MAX_AGE_MS="${STALE_SESSION_MAX_AGE_MS:-3600000}"
+
+# Path configuration
+ENV PATH="/usr/local/bin:${PATH}"
+ENV HOME="/workspace"
+
+# -----------------------------------------------------------------------------
+# Install Bot Town daemon dependencies
+# -----------------------------------------------------------------------------
+WORKDIR /app
+
+# Copy package files for daemon
+COPY --from=builder /usr/local/bin/pnpm /usr/local/bin/pnpm
+COPY --from=builder /usr/local/bin/tsc /usr/local/bin/tsc
+
+# Copy daemon source (assumes build context includes bottown packages)
+# NOTE: In production, these should be copied from the bottown repo
+COPY --chown=daemonuser:daemonuser packages/laptop-daemon/package*.json ./packages/laptop-daemon/
+COPY --chown=daemonuser:daemonuser packages/board-shared/package*.json ./packages/board-shared/
+
+# Install dependencies
+RUN pnpm install --frozen-lockfile --prefer-offline \
+    && pnpm -r build
+
+# Copy built daemon
+COPY --chown=daemonuser:daemonuser packages/laptop-daemon/dist ./packages/laptop-daemon/dist
+COPY --chown=daemonuser:daemonuser packages/board-shared/dist ./packages/board-shared/dist
+
+# -----------------------------------------------------------------------------
+# Health check
+# -----------------------------------------------------------------------------
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:4096/health || exit 1
+
+# -----------------------------------------------------------------------------
+# Expose ports
+# -----------------------------------------------------------------------------
+EXPOSE 4096
+
+# -----------------------------------------------------------------------------
+# Entry point
+# -----------------------------------------------------------------------------
+USER daemonuser
+WORKDIR /workspace
+
+# Default entrypoint runs the Bot Town daemon
+ENTRYPOINT ["node", "/app/packages/laptop-daemon/dist/index.js"]
+
+# =============================================================================
+# BUILD INSTRUCTIONS
+# =============================================================================
+#
+# Multi-platform build (Mac + Dell):
+#   docker buildx create --use
+#   docker buildx build \
+#     --platform linux/amd64,linux/arm64 \
+#     -t bottown-daemon:latest \
+#     -f docker/Dockerfile.daemon .
+#
+# Single platform (local):
+#   docker build -t bottown-daemon:latest -f docker/Dockerfile.daemon .
+#
+# Run locally:
+#   docker run -e TOWN_SERVER_URL=ws://town.lan:8091 bottown-daemon:latest
+#
+# Run with OpenCode config mounted:
+#   docker run \
+#     -e TOWN_SERVER_URL=ws://town.lan:8091 \
+#     -e DAEMON_NODE_ID=mac-daemon-1 \
+#     -v ~/.config/opencode:/workspace/.config/opencode:ro \
+#     -v ~/.claude/skills:/workspace/.claude/skills:ro \
+#     bottown-daemon:latest
+#
+# =============================================================================
