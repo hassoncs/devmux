@@ -1,0 +1,26 @@
+version: 1
+globalPrerequisites:
+  - nodejs
+  - pnpm
+  - git
+  - ch5
+
+steps:
+  - id: deps
+    description: Install dependencies
+    command: pnpm install
+    cwd: .
+  - id: ch5-identity
+    description: Validate CH5 project identity
+    command: ch5 validate . --json
+    cwd: .
+  - id: hush-init
+    description: Initialize secrets management
+    command: npx hush init && npx hush keys setup
+    cwd: .
+    condition: file-missing hush.yaml
+  - id: build
+    description: Build the project
+    command: pnpm build
+    cwd: .
+    condition: always
