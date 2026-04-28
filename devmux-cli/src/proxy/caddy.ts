@@ -38,6 +38,8 @@ const DEFAULT_SERVER_CONFIG: CaddyServerConfig = {
   listen: [":80"],
   routes: [],
 };
+const DUPLICATE_ROUTE_ID_FRAGMENT = "duplicate ID";
+const REGISTER_ROUTE_MAX_ATTEMPTS = 2;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -67,6 +69,37 @@ function buildRoute(hostname: string, port: number): CaddyRoute {
       },
     ],
   };
+}
+
+function parseManagedRoute(
+  route: CaddyRoute,
+): { hostname: string; port: number } | null {
+  const id = route["@id"];
+  if (typeof id !== "string" || !id.startsWith(DEVMUX_ID_PREFIX)) return null;
+
+  const hostname = route.match?.[0]?.host?.[0];
+  if (!hostname) return null;
+
+  const outerHandle = route.handle?.[0];
+  if (!outerHandle || outerHandle.handler !== "subroute") return null;
+
+  const innerHandle = outerHandle.routes?.[0]?.handle?.[0];
+  if (!innerHandle) return null;
+
+  const dial = innerHandle.upstreams?.[0]?.dial;
+  if (!dial) return null;
+
+  const portStr = dial.split(":")[1];
+  if (!portStr) return null;
+
+  const port = parseInt(portStr, 10);
+  if (isNaN(port)) return null;
+
+  return { hostname, port };
+}
+
+function isDuplicateRouteIdError(message: string): boolean {
+  return message.includes(DUPLICATE_ROUTE_ID_FRAGMENT);
 }
 
 // ── CaddyManager ─────────────────────────────────────────────────────────────
@@ -149,14 +182,40 @@ export class CaddyManager {
    * Deletes any existing route with the same ID first, then POSTs the new one.
    */
   async registerRoute(hostname: string, port: number): Promise<void> {
+    for (let attempt = 1; attempt <= REGISTER_ROUTE_MAX_ATTEMPTS; attempt++) {
+      const result = await this.tryRegisterRoute(hostname, port);
+      if (result === "ok") return;
+
+      if (!isDuplicateRouteIdError(result)) {
+        throw new Error(result);
+      }
+
+      const existingRoute = await this.getManagedRoute(hostname);
+      if (existingRoute?.port === port) {
+        return;
+      }
+
+      if (
+        attempt < REGISTER_ROUTE_MAX_ATTEMPTS &&
+        isDuplicateRouteIdError(result)
+      ) {
+        continue;
+      }
+
+      throw new Error(result);
+    }
+  }
+
+  private async tryRegisterRoute(
+    hostname: string,
+    port: number,
+  ): Promise<"ok" | string> {
     const serverName = await this.getServerName();
     const route = buildRoute(hostname, port);
     const configRes = await this.fetchAdmin(`${this.adminUrl}/config/`);
 
     if (!configRes.ok) {
-      throw new Error(
-        `Failed to read full Caddy config for "${hostname}": ${configRes.status} ${configRes.statusText}`,
-      );
+      return `Failed to read full Caddy config for "${hostname}": ${configRes.status} ${configRes.statusText}`;
     }
 
     const config = ((await configRes.json()) as CaddyConfig) ?? {};
@@ -184,12 +243,17 @@ export class CaddyManager {
       body: JSON.stringify(config),
     });
 
-    if (!loadRes.ok) {
-      const body = await loadRes.text().catch(() => "");
-      throw new Error(
-        `Failed to register Caddy route for "${hostname}": ${loadRes.status} ${loadRes.statusText}${body ? ` — ${body}` : ""}`,
-      );
-    }
+    if (loadRes.ok) return "ok";
+
+    const body = await loadRes.text().catch(() => "");
+    return `Failed to register Caddy route for "${hostname}": ${loadRes.status} ${loadRes.statusText}${body ? ` — ${body}` : ""}`;
+  }
+
+  private async getManagedRoute(
+    hostname: string,
+  ): Promise<{ hostname: string; port: number } | null> {
+    const routes = await this.listRoutes();
+    return routes.find((route) => route.hostname === hostname) ?? null;
   }
 
   /**
@@ -228,28 +292,9 @@ export class CaddyManager {
     const result: Array<{ hostname: string; port: number }> = [];
 
     for (const route of routes) {
-      const id = route["@id"];
-      if (typeof id !== "string" || !id.startsWith(DEVMUX_ID_PREFIX)) continue;
-
-      const hostname = route.match?.[0]?.host?.[0];
-      if (!hostname) continue;
-
-      const outerHandle = route.handle?.[0];
-      if (!outerHandle || outerHandle.handler !== "subroute") continue;
-
-      const innerHandle = outerHandle.routes?.[0]?.handle?.[0];
-      if (!innerHandle) continue;
-
-      const dial = innerHandle.upstreams?.[0]?.dial;
-      if (!dial) continue;
-
-      const portStr = dial.split(":")[1];
-      if (!portStr) continue;
-
-      const port = parseInt(portStr, 10);
-      if (isNaN(port)) continue;
-
-      result.push({ hostname, port });
+      const managedRoute = parseManagedRoute(route);
+      if (!managedRoute) continue;
+      result.push(managedRoute);
     }
 
     return result;

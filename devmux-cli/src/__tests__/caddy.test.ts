@@ -219,6 +219,176 @@ describe("CaddyManager", () => {
         manager.registerRoute("bad.localhost", 9999),
       ).rejects.toThrow('Failed to register Caddy route for "bad.localhost"');
     });
+
+    it("treats duplicate route ID as success when the existing route already matches", async () => {
+      mockFetch
+        .mockResolvedValueOnce(makeResponse(200, SERVERS_RESPONSE))
+        .mockResolvedValueOnce(
+          makeResponse(200, {
+            apps: {
+              http: {
+                servers: {
+                  srv0: {
+                    listen: [":80"],
+                    routes: [],
+                  },
+                },
+              },
+            },
+          }),
+        )
+        .mockResolvedValueOnce(
+          makeResponse(400, "indexing config: duplicate ID 'devmux_api_myapp_localhost' found"),
+        )
+        .mockResolvedValueOnce(makeResponse(200, [ROUTE_WITH_DEVMUX_ID]));
+
+      await expect(
+        manager.registerRoute("api.myapp.localhost", 4001),
+      ).resolves.toBeUndefined();
+
+      expect(mockFetch).toHaveBeenCalledTimes(4);
+    });
+
+    it("retries duplicate route ID conflicts and throws when the existing route points elsewhere", async () => {
+      mockFetch
+        .mockResolvedValueOnce(makeResponse(200, SERVERS_RESPONSE))
+        .mockResolvedValueOnce(
+          makeResponse(200, {
+            apps: {
+              http: {
+                servers: {
+                  srv0: {
+                    listen: [":80"],
+                    routes: [],
+                  },
+                },
+              },
+            },
+          }),
+        )
+        .mockResolvedValueOnce(
+          makeResponse(400, "indexing config: duplicate ID 'devmux_api_myapp_localhost' found"),
+        )
+        .mockResolvedValueOnce(
+          makeResponse(200, [
+            {
+              ...ROUTE_WITH_DEVMUX_ID,
+              handle: [
+                {
+                  handler: "subroute",
+                  routes: [
+                    {
+                      handle: [
+                        {
+                          handler: "reverse_proxy",
+                          transport: {
+                            protocol: "http",
+                            response_header_timeout: "0s",
+                          },
+                          upstreams: [{ dial: "localhost:4999" }],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ]),
+        )
+        .mockResolvedValueOnce(
+          makeResponse(200, {
+            apps: {
+              http: {
+                servers: {
+                  srv0: {
+                    listen: [":80"],
+                    routes: [],
+                  },
+                },
+              },
+            },
+          }),
+        )
+        .mockResolvedValueOnce(
+          makeResponse(400, "indexing config: duplicate ID 'devmux_api_myapp_localhost' found"),
+        )
+        .mockResolvedValueOnce(
+          makeResponse(200, [
+            {
+              ...ROUTE_WITH_DEVMUX_ID,
+              handle: [
+                {
+                  handler: "subroute",
+                  routes: [
+                    {
+                      handle: [
+                        {
+                          handler: "reverse_proxy",
+                          transport: {
+                            protocol: "http",
+                            response_header_timeout: "0s",
+                          },
+                          upstreams: [{ dial: "localhost:4999" }],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ]),
+        );
+
+      await expect(
+        manager.registerRoute("api.myapp.localhost", 4001),
+      ).rejects.toThrow('Failed to register Caddy route for "api.myapp.localhost": 400');
+
+      expect(mockFetch).toHaveBeenCalledTimes(7);
+    });
+
+    it("retries duplicate route ID conflicts and succeeds when the second attempt converges", async () => {
+      mockFetch
+        .mockResolvedValueOnce(makeResponse(200, SERVERS_RESPONSE))
+        .mockResolvedValueOnce(
+          makeResponse(200, {
+            apps: {
+              http: {
+                servers: {
+                  srv0: {
+                    listen: [":80"],
+                    routes: [],
+                  },
+                },
+              },
+            },
+          }),
+        )
+        .mockResolvedValueOnce(
+          makeResponse(400, "indexing config: duplicate ID 'devmux_api_myapp_localhost' found"),
+        )
+        .mockResolvedValueOnce(makeResponse(200, []))
+        .mockResolvedValueOnce(
+          makeResponse(200, {
+            apps: {
+              http: {
+                servers: {
+                  srv0: {
+                    listen: [":80"],
+                    routes: [],
+                  },
+                },
+              },
+            },
+          }),
+        )
+        .mockResolvedValueOnce(makeResponse(200, {}));
+
+      await expect(
+        manager.registerRoute("api.myapp.localhost", 4001),
+      ).resolves.toBeUndefined();
+
+      expect(mockFetch).toHaveBeenCalledTimes(6);
+    });
   });
 
   // ── deregisterRoute ───────────────────────────────────────────────────────
