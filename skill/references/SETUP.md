@@ -1,0 +1,116 @@
+# How to Set Up DevMux
+
+> **Guide for AI Agents & Humans**: The proper way to configure a repository for DevMux.
+
+## 0. Install DevMux
+
+```bash
+pnpm add -D @chriscode/devmux
+```
+
+### Make `devmux` Available on PATH (Recommended)
+
+By default, `devmux` requires `npx devmux` or `pnpm exec devmux`. To use `devmux` directly, add `node_modules/.bin` to your PATH using [direnv](https://direnv.net/).
+
+**One-time setup** (if you don't have direnv):
+```bash
+brew install direnv
+# Add to ~/.zshrc or ~/.bashrc:
+eval "$(direnv hook zsh)"  # or bash
+```
+
+**Per-project setup**:
+```bash
+# In your project root, create .envrc:
+echo 'PATH_add node_modules/.bin' > .envrc
+direnv allow
+```
+
+Now `devmux` works directly:
+```bash
+devmux status      # Instead of: npx devmux status
+devmux ensure api  # Instead of: pnpm exec devmux ensure api
+```
+
+> **Note**: This also makes all other local binaries available (eslint, tsc, etc.)
+
+## 1. Goal
+We want **every** persistent task (servers, watchers) to be managed by DevMux.
+*   ✅ `pnpm dev` -> `devmux ensure web`
+*   ✅ `pnpm ios` -> `devmux ensure ios`
+*   ❌ `pnpm dev` -> `next dev` (Foreground process that blocks the agent)
+
+## 2. Configuration (`devmux.config.json`)
+
+Use the discovery tool to bootstrap:
+```bash
+devmux discover turbo > devmux.config.json
+```
+
+Then edit it to ensure:
+1.  **Health Checks**: Every service needs a port or HTTP check.
+2.  **Dependencies**: Use `dependsOn` to enforce startup order.
+
+Example:
+```json
+{
+  "services": {
+    "api": {
+      "command": "pnpm start:api",
+      "health": { "type": "port", "port": 3000 }
+    },
+    "web": {
+      "command": "pnpm start:web",
+      "dependsOn": ["api"],
+      "health": { "type": "port", "port": 8080 }
+    }
+  }
+}
+```
+
+## 3. Package.json Scripts (The "DevMux Everywhere" Pattern)
+
+Update your root `package.json` so that standard commands use DevMux. This ensures both humans and agents use the safe path.
+
+**Before:**
+```json
+"scripts": {
+  "dev": "turbo dev",
+  "api": "cd api && pnpm dev"
+}
+```
+
+**After (Recommended):**
+```json
+"scripts": {
+  "svc:status": "devmux status",
+  "svc:stop": "devmux stop all",
+  
+  "dev": "devmux ensure web",
+  "dev:api": "devmux ensure api",
+  
+  "// Note": "Use devmux run for one-off commands that need services",
+  "test:e2e": "devmux run --with web -- pnpm playwright test"
+}
+```
+
+## 4. Verification
+
+1.  Run `pnpm dev` (or equivalent).
+2.  It should start services in tmux.
+3.  Run `devmux status` to confirm.
+4.  Ctrl+C should stop them (if running in foreground wrapper) or leave them (if using ensure).
+
+## 5. Agent Instructions
+
+Ensure the project has an `AGENTS.md` (or similar) that tells the agent to use `devmux`. Copy the template from `docs/AGENTS_TEMPLATE.md` in the devmux repo, or install the skill:
+```bash
+devmux install-skill
+```
+
+## Notes
+
+- Default session prefix is `devmux-{project}` (e.g. `devmux-myapp-api`).
+- OpenCode users who want to match OpenCode's session naming can set `"sessionPrefix": "omo-myproject"` in `devmux.config.json`.
+- State and error queue live in `~/.devmux/` (created with 0700 permissions, queue file 0600).
+- Captured log lines are redacted by default (bearer tokens, API keys, etc.).

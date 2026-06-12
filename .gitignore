@@ -1,0 +1,24 @@
+node_modules
+dist
+.astro
+.wrangler
+*.log
+.DS_Store
+.claude
+.env
+.env.local
+.env.*.local
+.hush.local
+.sisyphus/
+.worktrees/
+*.tsbuildinfo
+.mcp_data/
+
+# Internal tooling (must not return)
+.ch5/
+.ch5rc
+.sisyphus/
+
+# Standard patterns
+.DS_Store
+.mutagen.yml

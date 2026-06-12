@@ -1,0 +1,204 @@
+---
+title: Configuration
+description: Complete guide to configuring devmux for your project.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+devmux is configured via a `devmux.config.json` file in your project root.
+
+## Basic Structure
+
+```json
+{
+  "project": "myapp",
+  "services": {
+    "api": {
+      "command": "pnpm dev",
+      "cwd": "./api",
+      "port": 8787
+    },
+    "web": {
+      "command": "pnpm dev", 
+      "cwd": "./web",
+      "port": 3000
+    }
+  }
+}
+```
+
+## Configuration Options
+
+### `project` (required)
+
+The project name used in tmux session naming. Sessions are named `devmux-{project}-{service}` by default.
+
+```json
+{
+  "project": "waypoint"
+}
+```
+
+This creates sessions like `devmux-waypoint-api`, `devmux-waypoint-web`.
+
+<Aside type="tip">
+Use a short, unique name. This helps identify your project's sessions when running `tmux list-sessions`.
+</Aside>
+
+### `services` (required)
+
+A map of service names to their configurations.
+
+```json
+{
+  "services": {
+    "api": { ... },
+    "web": { ... },
+    "worker": { ... }
+  }
+}
+```
+
+## Service Options
+
+### `command` (required)
+
+The command to run when starting the service.
+
+```json
+{
+  "command": "pnpm dev"
+}
+```
+
+For complex commands, you can use shell syntax:
+
+```json
+{
+  "command": "DATABASE_URL=postgres://localhost/dev pnpm dev"
+}
+```
+
+### `cwd` (optional)
+
+Working directory for the command, relative to the config file location.
+
+```json
+{
+  "cwd": "./packages/api"
+}
+```
+
+If not specified, defaults to the project root.
+
+### `port` (optional)
+
+The port the service listens on. Used for health checks.
+
+```json
+{
+  "port": 8787
+}
+```
+
+When specified, `devmux ensure` will wait for this port to be available before returning.
+
+### `health` (optional)
+
+How to verify the service is ready. Optional — if omitted, the service starts without waiting for readiness.
+
+```json
+{
+  "health": {
+    "type": "http",
+    "url": "http://localhost:3000/health"
+  }
+}
+```
+
+Options:
+- `type`: `"port"`, `"http"`, or `"none"`
+- For `port`: `port` (number), optional `host`
+- For `http`: `url` (full URL), optional `expectStatus` (default: any status < 500 is healthy)
+- Startup timeout controlled via `defaults.startupTimeoutSeconds` or `--timeout` CLI flag
+
+## Full Example
+
+Here's a complete configuration for a typical monorepo:
+
+```json
+{
+  "version": 1,
+  "project": "acme",
+  "defaults": {
+    "startupTimeoutSeconds": 60,
+    "remainOnExit": true
+  },
+  "services": {
+    "api": {
+      "cwd": "./apps/api",
+      "command": "pnpm dev",
+      "health": {
+        "type": "http",
+        "url": "http://localhost:8787/health"
+      },
+      "port": 8787
+    },
+    "web": {
+      "cwd": "./apps/web",
+      "command": "pnpm dev",
+      "health": { "type": "port", "port": 3000 }
+    },
+    "docs": {
+      "cwd": "./apps/docs",
+      "command": "pnpm dev",
+      "health": { "type": "port", "port": 3001 }
+    },
+    "worker": {
+      "cwd": "./apps/worker",
+      "command": "pnpm dev",
+      "health": { "type": "none" }
+    }
+  }
+}
+```
+
+## Machine-Specific Settings
+
+For machine-specific settings, use the `env` field in service definitions or set environment variables in your shell. There is no local-override config file.
+
+## Generating Config
+
+### From Turbo.json
+
+If you use Turborepo, generate config automatically:
+
+```bash
+devmux discover turbo > devmux.config.json
+```
+
+This scans your `turbo.json` for persistent tasks and outputs JSON to stdout. Pipe it to a file to save it.
+
+### Interactive Init
+
+Create a basic config interactively:
+
+```bash
+devmux init
+```
+
+This prints a template you can customize.
+
+## Validation
+
+devmux validates your config on startup. Common errors:
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| `Missing project name` | No `project` field | Add `"project": "myapp"` |
+| `No services defined` | Empty `services` object | Add at least one service |
+| `Invalid port` | Port is not a number | Use a number like `8787` |
+
+<Aside type="caution">
+The `cwd` path must exist. devmux will error if the directory is not found.
+</Aside>

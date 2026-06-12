@@ -1,0 +1,272 @@
+---
+title: Config File Reference
+description: Complete reference for devmux.config.json options.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## File Location
+
+devmux walks up from the current directory to the filesystem root looking for config:
+
+1. `devmux.config.json`
+2. `.devmuxrc.json`
+3. `.devmuxrc`
+4. `package.json` with a `"devmux"` key
+
+The walk-up means you can run devmux from any subdirectory of your project and it will find the config at the project root.
+
+## Schema
+
+```json
+{
+  "version": 1,
+  "project": "string (required)",
+  "sessionPrefix": "string (optional, default: devmux-{project})",
+  "defaults": {
+    "startupTimeoutSeconds": "number (optional, default: 30)",
+    "remainOnExit": "boolean (optional)"
+  },
+  "proxy": {
+    "enabled": "boolean (optional)",
+    "port": "number (optional)",
+    "hostnamePattern": "string (optional)"
+  },
+  "watch": {
+    "enabled": "boolean (optional)",
+    "outputDir": "string (optional, default: ~/.devmux)",
+    "dedupeWindowMs": "number (optional)",
+    "contextLines": "number (optional)"
+  },
+  "services": {
+    "<name>": {
+      "cwd": "string (required)",
+      "command": "string (required)",
+      "health": {
+        "type": "port | http | none",
+        "port": "number (for port type)",
+        "url": "string (for http type)",
+        "expectStatus": "number (for http type, optional)"
+      },
+      "port": "number (optional)",
+      "sessionName": "string (optional)",
+      "env": "object (optional)",
+      "stopPorts": "number[] (optional)",
+      "dependsOn": "string[] (optional)",
+      "watch": {
+        "enabled": "boolean (optional)",
+        "include": "string[] (optional)",
+        "patterns": "ErrorPattern[] (optional)"
+      },
+      "proxy": "boolean (optional)",
+      "dashboard": "boolean (optional)"
+    }
+  }
+}
+```
+
+## Top-Level Fields
+
+### `project`
+
+**Required**. The project identifier used in tmux session naming.
+
+```json
+{
+  "project": "myapp"
+}
+```
+
+Sessions are named `devmux-{project}-{service}` by default, so this creates sessions like:
+- `devmux-myapp-api`
+- `devmux-myapp-web`
+
+You can override the prefix with `sessionPrefix` in the config (e.g. OpenCode users often set `"sessionPrefix": "omo-myapp"`).
+
+<Aside type="tip">
+Keep this short and unique. It appears in `tmux list-sessions` output.
+</Aside>
+
+### `services`
+
+**Required**. A map of service names to their configurations.
+
+```json
+{
+  "services": {
+    "api": { ... },
+    "web": { ... }
+  }
+}
+```
+
+Service names should be:
+- Lowercase
+- No spaces (use hyphens if needed)
+- Descriptive but short
+
+## Service Fields
+
+### `command`
+
+**Required**. The shell command to start the service.
+
+```json
+{
+  "command": "pnpm dev"
+}
+```
+
+Complex commands with environment variables:
+
+```json
+{
+  "command": "NODE_ENV=development pnpm start"
+}
+```
+
+### `cwd`
+
+Working directory for the command. Relative paths are resolved from the config file location.
+
+```json
+{
+  "cwd": "./apps/api"
+}
+```
+
+If omitted, defaults to the directory containing `devmux.config.json`.
+
+### `port`
+
+The port number the service listens on.
+
+```json
+{
+  "port": 8787
+}
+```
+
+When specified:
+- `devmux ensure` waits for this port to accept connections
+- `devmux status` shows the port
+- Health checks verify the port is listening
+
+### `health`
+
+How to verify the service is ready. Optional — if omitted, devmux starts the service but does not wait for readiness.
+
+```json
+{
+  "health": {
+    "type": "port",
+    "port": 8787
+  }
+}
+```
+
+#### `health.type`
+
+| Type | Behavior |
+|------|----------|
+| `port` | Check if the port accepts TCP connections |
+| `http` | Make HTTP GET request; healthy = status < 500. Use `expectStatus` for an exact code. |
+| `none` | Explicitly no health check (service starts without waiting) |
+
+#### `health` for `http` type
+
+```json
+{
+  "health": {
+    "type": "http",
+    "url": "http://localhost:3000/health",
+    "expectStatus": 200
+  }
+}
+```
+
+`expectStatus` is optional. By default any response with status < 500 is considered healthy (so 404 is not healthy).
+
+#### Startup timeout
+
+Control how long devmux waits for the health check via `defaults.startupTimeoutSeconds` (global) or `--timeout` on the CLI (per invocation).
+
+## Complete Example
+
+```json
+{
+  "version": 1,
+  "project": "acme-store",
+  "defaults": {
+    "startupTimeoutSeconds": 45,
+    "remainOnExit": true
+  },
+  "services": {
+    "api": {
+      "cwd": "./apps/api",
+      "command": "pnpm dev",
+      "health": {
+        "type": "http",
+        "url": "http://localhost:8787/health"
+      },
+      "port": 8787
+    },
+    "web": {
+      "cwd": "./apps/web",
+      "command": "pnpm dev",
+      "health": { "type": "port", "port": 3000 }
+    },
+    "docs": {
+      "cwd": "./apps/docs",
+      "command": "pnpm dev",
+      "health": { "type": "port", "port": 3001 }
+    },
+    "worker": {
+      "cwd": "./apps/worker",
+      "command": "pnpm dev",
+      "health": { "type": "none" }
+    },
+    "db": {
+      "cwd": ".",
+      "command": "docker compose up postgres redis",
+      "health": { "type": "port", "port": 5432 }
+    }
+  }
+}
+```
+
+## Machine-Specific Settings
+
+For machine-specific overrides, use the `env` field in your service definitions, or set environment variables in your shell before running devmux. There is no separate local-override config file.
+
+## Validation
+
+devmux validates config on startup. Validation errors:
+
+| Error | Cause |
+|-------|-------|
+| `Missing required field: project` | No `project` key |
+| `Missing required field: services` | No `services` key |
+| `Service "api" missing required field: command` | Service without command |
+| `Invalid port for service "api": must be number` | Port is not a number |
+| `Directory not found for service "api"` | `cwd` path doesn't exist |
+
+## TypeScript Types
+
+If you're generating config programmatically:
+
+```typescript
+import type { DevMuxConfig } from '@chriscode/devmux';
+
+const config: DevMuxConfig = {
+  version: 1,
+  project: 'myapp',
+  services: {
+    api: {
+      cwd: '.',
+      command: 'pnpm dev',
+      health: { type: 'port', port: 8787 },
+    },
+  },
+};
+```

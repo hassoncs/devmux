@@ -1,0 +1,821 @@
+# @chriscode/devmux
+
+> **tmux-based service management for monorepos.** Shared awareness between humans and AI agents—both can see and reuse running dev servers.
+
+[![npm](https://img.shields.io/npm/v/@chriscode/devmux)](https://www.npmjs.com/package/@chriscode/devmux)
+[![Documentation](https://img.shields.io/badge/docs-devmux.pages.dev-blue)](https://devmux.pages.dev)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+**[Read the documentation →](https://devmux.pages.dev)**
+
+## Why devmux?
+
+Modern development increasingly involves AI coding assistants (Claude, Copilot, OpenCode, Cursor, etc.) that can run terminal commands. This creates a problem:
+
+**The Problem:**
+```
+You: pnpm dev          → Starts API server on port 8787
+Agent: pnpm dev        → Port conflict! Or kills your server!
+```
+
+When both humans and AI agents work in the same codebase, they need **shared awareness** of what's running. Without it:
+- Agents restart servers you're actively using
+- You lose state when agents kill processes
+- Port conflicts cause confusing errors
+- No visibility into what the agent started
+
+**The Solution:**
+
+`devmux` uses tmux sessions with predictable naming conventions as a shared registry of running services. Both humans and agents can:
+- **See** what's running (`devmux status`)
+- **Reuse** existing services (`devmux ensure api` is idempotent)
+- **Clean up** only what they started (Ctrl+C cleans up your services, not the agent's)
+
+```
+You: devmux run --with api -- pnpm ios
+  → Starts API in tmux session "devmux-myapp-api"
+  → Runs iOS in foreground
+  → Ctrl+C kills iOS AND API (because you started it)
+
+Later, Agent: devmux ensure api
+  → Checks port 8787... already listening!
+  → "✅ api already running"
+  → Reuses your server, no restart
+```
+
+## Installation
+
+```bash
+npm install -g @chriscode/devmux
+# or
+pnpm add -g @chriscode/devmux
+# or in your project
+pnpm add -D @chriscode/devmux
+```
+
+## Quick Start
+
+### 1. Create config
+
+```bash
+# Auto-discover from turbo.json
+devmux discover turbo > devmux.config.json
+
+# Or start from template
+devmux init > devmux.config.json
+```
+
+Edit `devmux.config.json`:
+
+```json
+{
+  "version": 1,
+  "project": "my-app",
+  "services": {
+    "api": {
+      "cwd": "api",
+      "command": "pnpm dev",
+      "health": { "type": "port", "port": 8787 }
+    }
+  }
+}
+```
+
+### 2. Add to package.json
+
+```json
+{
+  "scripts": {
+    "dev": "devmux run --with api -- pnpm --filter app dev",
+    "ios": "devmux run --with api -- pnpm --filter app ios",
+    "svc:status": "devmux status",
+    "svc:ensure": "devmux ensure api",
+    "svc:stop": "devmux stop",
+    "svc:attach": "devmux attach api"
+  }
+}
+```
+
+### 3. Add agent instructions
+
+Copy the snippet from [AGENTS.md template](./docs/AGENTS_TEMPLATE.md) to your project's `AGENTS.md`.
+
+### 4. Use it!
+
+```bash
+pnpm dev        # API starts in background, cleans up on Ctrl+C
+pnpm svc:status # See what's running
+```
+
+### 5. Optional: enable port-free URLs
+
+If you want `http://web.my-app.localhost` style URLs, devmux includes a managed
+Caddy setup flow on macOS:
+
+```bash
+brew install caddy
+sudo devmux proxy setup --apply
+devmux proxy doctor
+```
+
+Then add `"proxy": { "enabled": true }` to `devmux.config.json` and opt each
+service in with `"proxy": true`. After that one-time setup, `devmux ensure`
+will try to revive the managed proxy automatically before registering `.localhost`
+routes.
+
+## How It Works
+
+### Health-first, tmux-second
+
+devmux doesn't just check if a tmux session exists—it checks if the service is actually healthy:
+
+```
+1. Is port/URL responding? → "Running" (reuse, even if started outside tmux)
+2. tmux session exists but unhealthy? → Restart it
+3. Nothing running? → Start new tmux session
+```
+
+This means devmux works even if you started a server manually without tmux.
+
+### Session naming convention
+
+Sessions are named `{prefix}-{service}` (or `{prefix}-{instance}-{service}` with multi-worktree):
+- Default prefix: `devmux-{project}` (e.g., `devmux-myapp-api`)
+- With instance: `devmux-{project}-{instance}-{service}` (e.g., `devmux-myapp-feature-x-api`)
+- OpenCode users can set `"sessionPrefix": "omo-myproject"` in their config to match OpenCode's convention
+- Predictable names let agents discover human-started sessions and vice versa
+
+### Cleanup tracking
+
+When you run `devmux run --with api -- pnpm ios`:
+1. devmux checks if API is already healthy
+2. If not, starts it and marks "we started this"
+3. Runs your command in foreground
+4. On Ctrl+C: only stops services "we started"
+
+This prevents accidentally killing the agent's API server when you exit.
+
+## Multi-Worktree Support
+
+When running multiple git worktrees of the same project (common in parallel AI agent workflows), DevMux automatically prevents port and session conflicts.
+
+### How It Works
+
+DevMux detects when you're in a git worktree and automatically:
+1. **Adds the worktree name to session names**: `devmux-myapp-feature-x-api` instead of `devmux-myapp-api`
+2. **Applies a deterministic port offset**: Port 8787 becomes 9549 (based on hash of worktree name)
+3. **Passes the resolved port via `PORT` env var**: Services can read `$PORT` to use the correct port
+
+### Usage
+
+**Git Worktrees (Zero Config)**
+```bash
+# Main checkout at /code/myapp
+cd /code/myapp
+devmux ensure api
+# → Session: devmux-myapp-api, Port: 8787
+
+# Worktree at /code/myapp-feature-x
+cd /code/myapp-feature-x
+devmux ensure api
+# → Session: devmux-myapp-feature-x-api, Port: 9549
+```
+
+**Explicit Instance ID**
+```bash
+# For non-worktree scenarios (CI, multiple checkouts)
+DEVMUX_INSTANCE_ID=agent-1 devmux ensure api
+DEVMUX_INSTANCE_ID=agent-2 devmux ensure api
+```
+
+### Service Configuration
+
+For services to use the DevMux-assigned port, they must read from the `PORT` environment variable:
+
+```json
+{
+  "services": {
+    "api": {
+      "command": "node server.js",
+      "health": { "type": "port", "port": 8787 }
+    }
+  }
+}
+```
+
+DevMux will:
+- Set `PORT=8787` (or `PORT=9549` with instance offset)
+- Health check the resolved port
+- Pass additional env vars: `DEVMUX_PORT`, `DEVMUX_INSTANCE_ID`, `DEVMUX_SERVICE`, `DEVMUX_PROJECT`
+
+### Backwards Compatibility
+
+Without `DEVMUX_INSTANCE_ID` set and outside of a git worktree, DevMux behaves exactly as before—no port offsets, no instance suffix in session names.
+
+## CLI Reference
+
+### `devmux ensure <service>`
+
+Ensure a service is running. **Idempotent**—safe to call multiple times.
+
+```bash
+devmux ensure api
+# ✅ api already running (if healthy)
+# or
+# 🚀 Starting api in tmux session: devmux-myapp-api
+```
+
+Options:
+- `--timeout <seconds>` - Startup timeout (default: 30)
+
+### `devmux status`
+
+Show status of all configured services.
+
+```bash
+devmux status
+# ═══════════════════════════════════════
+#        Service Status
+# ═══════════════════════════════════════
+# ✅ api (port 8787): Running
+#    └─ tmux: devmux-myapp-api
+```
+
+Options:
+- `--json` - Output as JSON (for scripts/agents)
+
+### `devmux stop <service|all>`
+
+Stop a service or all services.
+
+```bash
+devmux stop api
+devmux stop all
+devmux stop api --force  # Also kill processes on ports
+```
+
+### `devmux attach <service>`
+
+Attach to a service's tmux session to view logs.
+
+```bash
+devmux attach api
+# Detach with Ctrl+B, then D
+```
+
+### `devmux run --with <services> -- <command>`
+
+Run a command with services, cleaning up on exit.
+
+```bash
+# Single service
+devmux run --with api -- pnpm ios
+
+# Multiple services
+devmux run --with api,worker -- pnpm dev
+
+# Keep services running after exit
+devmux run --with api --no-stop -- pnpm test
+```
+
+### `devmux discover turbo`
+
+Auto-discover services from `turbo.json` persistent tasks. Emits pure JSON to stdout; advisory messages go to stderr.
+
+```bash
+devmux discover turbo > devmux.config.json
+# Edit the resulting file to add/verify health checks
+```
+
+### `devmux init`
+
+Print a config template to get started.
+
+```bash
+devmux init > devmux.config.json
+```
+
+### `devmux start <service>`
+
+Alias for `devmux ensure`. With no service argument, opens an interactive picker (requires `fzf`).
+
+```bash
+devmux start api
+devmux start          # fzf picker to select service
+```
+
+### `devmux restart <service>`
+
+Stop then start a service.
+
+```bash
+devmux restart api
+devmux restart api --timeout 60   # Startup timeout in seconds
+devmux restart api --force        # Also kill processes on port before restarting
+```
+
+### `devmux diagnose <service>`
+
+Diagnose port issues for a service — shows what process is occupying the expected port.
+
+```bash
+devmux diagnose api
+devmux diagnose api --json
+```
+
+### `devmux ports`
+
+Show configured ports for the current project. Useful for agents or tooling to inspect port assignments without parsing the config file.
+
+```bash
+devmux ports              # Human-readable table
+devmux ports --json       # JSON (for scripts/agents)
+devmux ports --plain      # Tab-separated lines
+devmux ports --live       # Also probe whether ports are currently occupied
+```
+
+### `devmux dashboard`
+
+Manage the web dashboard for service monitoring.
+
+```bash
+devmux dashboard start            # Start on default port 9000
+devmux dashboard start --port 8080  # Custom port
+devmux dashboard start --no-open  # Don't auto-open browser
+devmux dashboard stop
+devmux dashboard status
+devmux dashboard status --json
+```
+
+The dashboard binds to `127.0.0.1` by default (local access only).
+
+### `devmux telemetry`
+
+Manage the local WebSocket bridge that streams browser/app logs into tmux sessions. See the Telemetry section below for full documentation.
+
+```bash
+devmux telemetry start            # Start on default port 9876
+devmux telemetry start --port 9876 --host 127.0.0.1
+devmux telemetry stop
+devmux telemetry status
+devmux telemetry status --json
+```
+
+### `devmux proxy`
+
+Manage the portless `.localhost` URL proxy (macOS only).
+
+```bash
+devmux proxy setup             # Print setup commands
+devmux proxy setup --apply     # Install Caddy + LaunchDaemon (requires sudo)
+devmux proxy setup --script    # Write a reusable shell script
+devmux proxy doctor            # Diagnose proxy readiness
+devmux proxy doctor --json
+devmux proxy start             # Start the managed proxy
+devmux proxy stop              # Stop the managed proxy
+devmux proxy status            # Show proxy status and routes
+devmux proxy routes            # List active hostname → port mappings
+devmux proxy teardown          # Remove LaunchDaemon + Caddyfile (requires sudo)
+devmux proxy teardown --apply  # Execute teardown immediately
+```
+
+### `devmux watch`
+
+Manage error watchers. See the Error Watching section below.
+
+```bash
+devmux watch start [service|all]
+devmux watch stop [service|all]
+devmux watch status [--json]
+devmux watch queue [--json] [--clear]
+```
+
+### `devmux install-skill`
+
+Install the official DevMux Skill for AI agents to `.claude/skills/devmux/`.
+
+```bash
+devmux install-skill
+# ✅ Installed DevMux skill to .claude/skills/devmux/
+```
+
+## Error Watching (Experimental)
+
+DevMux can watch your service logs for errors and capture them to a queue for later processing. This enables push-based error detection where errors are captured automatically as they happen.
+
+### Quick Start
+
+```bash
+# Start watching a service
+devmux watch start api
+
+# Check watcher status
+devmux watch status
+
+# View captured errors
+devmux watch queue
+
+# Stop watching
+devmux watch stop api
+```
+
+### Watch Commands
+
+| Command | Description |
+|---------|-------------|
+| `devmux watch start [service]` | Start watching a service (or all if no service specified) |
+| `devmux watch stop [service]` | Stop watching a service (or all) |
+| `devmux watch status` | Show which services have active watchers |
+| `devmux watch queue` | Show pending errors in the queue |
+| `devmux watch queue --clear` | Clear all errors from the queue |
+| `devmux watch queue --json` | Output queue as JSON |
+
+### Configuration
+
+Add watch configuration to your `devmux.config.json`:
+
+```json
+{
+  "version": 1,
+  "project": "my-app",
+  "watch": {
+    "enabled": true,
+    "dedupeWindowMs": 5000,
+    "contextLines": 20,
+    "patternSets": {
+      "my-custom": [
+        { "name": "my-app-error", "regex": "MyAppError:", "severity": "error" }
+      ]
+    }
+  },
+  "services": {
+    "api": {
+      "cwd": "api",
+      "command": "pnpm dev",
+      "health": { "type": "port", "port": 8787 },
+      "watch": {
+        "enabled": true,
+        "include": ["node", "web", "my-custom"]
+      }
+    },
+    "frontend": {
+      "cwd": "web",
+      "command": "pnpm dev",
+      "health": { "type": "port", "port": 3000 },
+      "watch": {
+        "enabled": true,
+        "include": ["node", "react", "nextjs"]
+      }
+    }
+  }
+}
+```
+
+### Built-in Pattern Sets
+
+DevMux ships with named pattern sets you can include in your services:
+
+| Set | Patterns | Use for |
+|-----|----------|---------|
+| `node` | `js-error`, `type-error`, `unhandled-rejection`, `oom` | Node.js/JavaScript services |
+| `web` | `http-5xx`, `http-4xx-important` | HTTP APIs |
+| `react` | `react-error` | React applications |
+| `nextjs` | `webpack-error`, `hydration-error` | Next.js applications |
+| `database` | `db-error` | Database connections |
+| `fatal` | `fatal` (PANIC, SIGSEGV, etc.) | System-level crashes |
+| `python` | `exception` | Python services |
+
+**Pattern sets are opt-in.** You must explicitly include them in your service config:
+
+```json
+{
+  "watch": {
+    "include": ["node", "web"]
+  }
+}
+```
+
+### Queue Format
+
+Errors are stored in `~/.devmux/queue.jsonl` as newline-delimited JSON:
+
+```json
+{
+  "id": "uuid",
+  "timestamp": "2024-01-22T10:00:00Z",
+  "source": "devmux:api",
+  "service": "api",
+  "project": "my-app",
+  "severity": "error",
+  "pattern": "js-error",
+  "rawContent": "Error: Connection refused",
+  "context": ["[10:00:00] Starting...", "..."],
+  "stackTrace": ["    at ..."],
+  "status": "pending",
+  "contentHash": "abc123",
+  "firstSeen": "2024-01-22T10:00:00Z"
+}
+```
+
+## Browser/App Telemetry (Experimental)
+
+Stream console logs and errors from your browser, React Native, or Expo apps directly to tmux sessions. Like Sentry/LogRocket but local-first for development.
+
+### Why?
+
+When developing web or mobile apps, errors and logs appear in browser DevTools or Metro bundler output—disconnected from your terminal workflow. DevMux Telemetry bridges this gap:
+
+- **Console logs** from your app stream to tmux sessions
+- **Errors with stack traces** are captured and routed to the error queue
+- **AI agents** can see browser errors without needing DevTools access
+- **Works with** Browser, React Native, and Expo
+
+### Quick Start
+
+**Telemetry here means a local log bridge: a WebSocket server YOU run on YOUR machine. Nothing ever leaves your machine; there are no analytics and no phoning home.**
+
+> **Note: The `@chriscode/devmux-telemetry` client SDK is not yet published to npm.** The server (`devmux telemetry start`) is included in the main package. Client-side setup is documented here for when the SDK is available.
+
+**1. Start the telemetry server:**
+
+```bash
+devmux telemetry start
+# 🚀 Telemetry server started on ws://127.0.0.1:9876
+```
+
+The server binds to `127.0.0.1` by default (local access only). To accept connections from physical mobile devices on the same network, use `--host 0.0.0.0` — this prints a warning and should only be used in trusted networks.
+
+**2. Add the client SDK to your app:**
+
+```bash
+pnpm add @chriscode/devmux-telemetry
+```
+
+**3. Initialize in your app entry point:**
+
+```typescript
+// Browser (e.g., main.tsx, index.tsx)
+import { initTelemetry } from '@chriscode/devmux-telemetry';
+
+if (process.env.NODE_ENV === 'development') {
+  initTelemetry({
+    appName: 'my-web-app',
+    serverUrl: 'ws://localhost:9876',
+  });
+}
+
+// React Native / Expo (e.g., App.tsx)
+import { initTelemetry } from '@chriscode/devmux-telemetry';
+
+if (__DEV__) {
+  initTelemetry({
+    appName: 'my-mobile-app',
+    serverUrl: 'ws://localhost:9876', // Use your dev machine's IP for physical devices
+  });
+}
+```
+
+**4. Logs now stream to tmux!**
+
+```bash
+# View in a dedicated tmux session
+tmux attach -t devmux-telemetry-browser-localhost-3000
+
+# Or check the error queue
+devmux watch queue
+```
+
+### Telemetry Commands
+
+| Command | Description |
+|---------|-------------|
+| `devmux telemetry start` | Start the telemetry WebSocket server |
+| `devmux telemetry stop` | Stop the telemetry server |
+| `devmux telemetry status` | Show server status and connected clients |
+
+Options:
+- `--port <number>` - Server port (default: 9876)
+- `--host <string>` - Server host (default: 127.0.0.1; use 0.0.0.0 only for physical device testing — prints a warning)
+
+### What Gets Captured
+
+| Source | Captured | Routed To |
+|--------|----------|-----------|
+| `console.log/info/debug` | ✅ | tmux session |
+| `console.warn` | ✅ | tmux session |
+| `console.error` | ✅ | tmux session + error queue |
+| Uncaught exceptions | ✅ | tmux session + error queue |
+| Unhandled promise rejections | ✅ | tmux session + error queue |
+| React error boundaries | ✅ | tmux session + error queue |
+
+### Client Configuration
+
+```typescript
+initTelemetry({
+  // Required
+  appName: 'my-app',           // Identifies your app in logs
+  
+  // Optional
+  serverUrl: 'ws://localhost:9876',  // Telemetry server URL
+  captureConsole: true,              // Intercept console.* methods
+  captureErrors: true,               // Capture uncaught errors
+  maxRetries: 5,                     // WebSocket reconnection attempts
+  retryDelayMs: 1000,                // Delay between retries
+});
+
+// Shutdown when done (e.g., in cleanup/unmount)
+import { shutdownTelemetry } from '@chriscode/devmux-telemetry';
+shutdownTelemetry();
+```
+
+### Architecture
+
+```
+┌─────────────────┐     WebSocket      ┌─────────────────────┐
+│  Browser/App    │ ─────────────────▶ │  Telemetry Server   │
+│  (Client SDK)   │                    │  (devmux telemetry) │
+└─────────────────┘                    └─────────────────────┘
+                                                │
+                                    ┌───────────┴───────────┐
+                                    ▼                       ▼
+                           ┌──────────────┐       ┌─────────────────┐
+                           │ tmux session │       │ queue.jsonl     │
+                           │ (live logs)  │       │ (errors only)   │
+                           └──────────────┘       └─────────────────┘
+```
+
+### Protocol
+
+The telemetry system uses an OpenTelemetry-aligned protocol:
+
+```typescript
+interface LogPayload {
+  severityNumber: number;    // 1-24 (OpenTelemetry severity)
+  severityText: string;      // "DEBUG", "INFO", "WARN", "ERROR", etc.
+  body: string;              // Log message
+  timestamp: string;         // ISO 8601
+  attributes?: Record<string, unknown>;
+  exception?: {
+    type: string;
+    message: string;
+    stacktrace?: string;
+  };
+}
+```
+
+## Configuration
+
+### Config file locations
+
+devmux walks up the directory tree from the current directory looking for config:
+1. `devmux.config.json`
+2. `.devmuxrc.json`
+3. `.devmuxrc`
+4. `package.json` with `"devmux"` key
+
+The walk continues up to the filesystem root, so running devmux from any subdirectory of your project will find the config.
+
+### Full schema
+
+```typescript
+interface DevMuxConfig {
+  version: 1;
+  project: string;                    // Used in session naming
+  sessionPrefix?: string;             // Override prefix (default: devmux-{project})
+  defaults?: {
+    startupTimeoutSeconds?: number;   // Default: 30
+    remainOnExit?: boolean;           // Keep session on crash (default: true)
+    dashboard?: boolean | { port?: number }; // Auto-launch dashboard
+  };
+  proxy?: {
+    enabled?: boolean;                // Enable portless proxy
+    port?: number;                    // Proxy listen port
+    hostnamePattern?: string;         // Hostname pattern (must be *.localhost)
+  };
+  watch?: {
+    enabled?: boolean;                // Enable error watching globally
+    outputDir?: string;               // Where to write queue.jsonl (default: ~/.devmux)
+    dedupeWindowMs?: number;          // Dedup window in ms (default: 5000)
+    contextLines?: number;            // Context lines to capture (default: 20)
+    patternSets?: Record<string, ErrorPatternConfig[]>; // Custom pattern sets
+  };
+  services: {
+    [name: string]: {
+      cwd: string;                    // Working directory (relative to config)
+      command: string;                // Command to run in tmux
+      health?: HealthCheck;           // How to verify service is ready (optional)
+      port?: number;                  // Port the service listens on
+      sessionName?: string;           // Override full session name
+      env?: Record<string, string>;   // Environment variables
+      stopPorts?: number[];           // Additional ports to kill on stop
+      dependsOn?: string[];           // Services that must be healthy first
+      watch?: {
+        enabled?: boolean;
+        include?: string[];           // Built-in pattern sets to enable
+        exclude?: string[];           // Pattern names to exclude
+        patterns?: ErrorPatternConfig[];  // Inline custom patterns
+        overrides?: Record<string, "info" | "warning" | "error" | "critical">;
+      };
+      dashboard?: boolean;            // Show in dashboard (default: true for services with a port)
+      proxy?: boolean;                // Opt into portless proxy routing
+    };
+  };
+}
+
+interface ErrorPatternConfig {
+  name: string;
+  regex: string;
+  severity: "info" | "warning" | "error" | "critical";
+  extractStackTrace?: boolean;
+}
+
+type HealthCheck =
+  | { type: "port"; port: number; host?: string }
+  | { type: "http"; url: string; expectStatus?: number }  // healthy = status < 500; use expectStatus for exact match
+  | { type: "none" };  // Explicitly no health check
+```
+
+## Programmatic API
+
+```typescript
+import { 
+  loadConfig,
+  ensureService,
+  getAllStatus,
+  stopService,
+  runWithServices 
+} from '@chriscode/devmux';
+
+// Load config from current directory
+const config = loadConfig();
+
+// Ensure service is running (idempotent)
+const result = await ensureService(config, 'api');
+console.log(result.startedByUs); // true if we started it
+
+// Get status of all services
+const statuses = await getAllStatus(config);
+for (const s of statuses) {
+  console.log(`${s.name}: ${s.healthy ? 'running' : 'stopped'}`);
+}
+
+// Stop a service
+stopService(config, 'api');
+
+// Run command with services
+const exitCode = await runWithServices(config, ['pnpm', 'test'], {
+  services: ['api'],
+  stopOnExit: true,
+});
+```
+
+## Integration with AI Agents
+
+See [docs/AGENTS_TEMPLATE.md](./docs/AGENTS_TEMPLATE.md) for a copy-pasteable snippet to add to your `AGENTS.md`.
+
+The key points for agents:
+1. Always check `devmux status` before starting services
+2. Use `devmux ensure <service>` (idempotent, won't restart if healthy)
+3. Session names follow pattern `devmux-{project}-{service}` (or `devmux-{project}-{instance}-{service}` in worktrees)
+4. In git worktrees, ports are automatically offset to prevent conflicts
+
+## Platform Support
+
+| Platform | Status | Notes |
+|----------|--------|-------|
+| macOS | Fully supported | All features including portless proxy |
+| Linux | Core works | Portless proxy unsupported; port detection requires `lsof` (not present on all minimal distros) |
+| Windows | Unsupported | devmux exits immediately unless running under WSL |
+| Windows (WSL) | Partial | Core service management works; proxy and macOS-specific features unavailable |
+
+## Security Notes
+
+- **Config files execute shell commands.** A `devmux.config.json` in a repo is equivalent to a Makefile — only run devmux in repositories you trust.
+- **Watch captures service log output.** Output is redacted by default (bearer tokens, API keys, AWS keys, GitHub tokens, and long hex/base64 strings are replaced with `[REDACTED]`). Redaction can be disabled via `"redact": false` in the watch config. The queue file (`~/.devmux/queue.jsonl`) is created with permissions 0600 (owner read/write only).
+- **Portless proxy installs a root LaunchDaemon** (macOS only) that requires a one-time `sudo devmux proxy setup --apply`. The proxy binds to `127.0.0.1:80` and is not LAN-visible.
+- See [SECURITY.md](./SECURITY.md) for the vulnerability disclosure policy.
+
+## Uninstall
+
+```bash
+# Remove the CLI
+npm rm -g @chriscode/devmux
+
+# Remove state and queue files
+rm -rf ~/.devmux
+
+# Remove the portless proxy LaunchDaemon (macOS only, if installed)
+sudo devmux proxy teardown --apply
+```
+
+If `devmux` is no longer on PATH when you run teardown, the manual steps are:
+```bash
+sudo launchctl bootout system/dev.devmux.caddy
+sudo rm -f /Library/LaunchDaemons/dev.devmux.caddy.plist
+sudo rm -f /usr/local/etc/caddy/Caddyfile
+sudo rm -rf /usr/local/libexec/devmux
+```
+
+## License
+
+MIT

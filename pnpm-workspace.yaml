@@ -1,0 +1,4 @@
+packages:
+  - "devmux-cli"
+  - "landing"
+  - "packages/*"

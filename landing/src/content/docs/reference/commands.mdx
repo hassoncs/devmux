@@ -1,0 +1,347 @@
+---
+title: Commands
+description: Complete reference for all devmux CLI commands.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## devmux ensure
+
+Start a service if not already running. Idempotent - safe to call multiple times.
+
+```bash
+devmux ensure <service>
+```
+
+### Behavior
+
+| Current State | Action |
+|--------------|--------|
+| Service not running | Start new tmux session |
+| tmux session exists, process dead | Restart the service |
+| Service running and healthy | Reuse (no-op) |
+
+### Options
+
+| Option | Description |
+|--------|-------------|
+| `--timeout <seconds>` | Startup timeout in seconds (default: 30) |
+
+### Examples
+
+```bash
+# Start API service
+devmux ensure api
+
+# Start with longer timeout
+devmux ensure api --timeout 60
+```
+
+---
+
+## devmux status
+
+Show status of all configured services.
+
+```bash
+devmux status [options]
+```
+
+### Output
+
+```
+Service    Status    Port    Session
+api        running   8787    devmux-myapp-api
+web        running   3000    devmux-myapp-web
+worker     stopped   -       -
+```
+
+### Options
+
+| Option | Description |
+|--------|-------------|
+| `--json` | Output as JSON (for scripts/agents) |
+
+### Examples
+
+```bash
+# Show all services
+devmux status
+
+# JSON output (for scripting)
+devmux status --json
+```
+
+---
+
+## devmux stop
+
+Stop one or all services.
+
+```bash
+devmux stop <service|all>
+```
+
+### Options
+
+| Option | Description |
+|--------|-------------|
+| `--force` | Also kill processes on the configured ports |
+
+### Examples
+
+```bash
+# Stop API service
+devmux stop api
+
+# Stop all services
+devmux stop all
+
+# Force-kill processes on ports
+devmux stop api --force
+```
+
+---
+
+## devmux attach
+
+Attach to a service's tmux session to view logs.
+
+```bash
+devmux attach <service>
+```
+
+### Usage
+
+After attaching:
+- View live logs
+- Interact with the process
+- Press `Ctrl+B` then `D` to detach (service keeps running)
+- Press `Ctrl+C` to stop the service and exit
+
+<Aside type="tip">
+Detaching (`Ctrl+B D`) leaves the service running. This is useful for checking logs without stopping the server.
+</Aside>
+
+---
+
+## devmux run
+
+Run a command with specified services, cleaning up on exit.
+
+```bash
+devmux run --with <service> [--with <service>...] -- <command>
+```
+
+### Behavior
+
+1. Ensures all specified services are running
+2. Runs your command
+3. When command exits, stops services that THIS run started
+4. Services that were already running are left alone
+
+### Options
+
+| Option | Description |
+|--------|-------------|
+| `--with <services>` | Comma-separated services to ensure before running |
+| `--no-stop` | Don't stop services on exit (default: stop services we started) |
+| `--no-dashboard` | Skip auto-launching the dashboard |
+
+### Examples
+
+```bash
+# Run tests with API
+devmux run --with api -- npm test
+
+# Run with multiple services
+devmux run --with api,worker -- npm run e2e
+
+# Keep services running after command exits
+devmux run --with api --no-stop -- npm test
+```
+
+---
+
+## devmux discover
+
+Auto-generate configuration from your project.
+
+```bash
+devmux discover <source>
+```
+
+### Sources
+
+| Source | Description |
+|--------|-------------|
+| `turbo` | Read from turbo.json |
+
+### Examples
+
+```bash
+# Discover from turbo.json — outputs JSON to stdout
+devmux discover turbo
+
+# Save directly to config file
+devmux discover turbo > devmux.config.json
+```
+
+<Aside type="note">
+`devmux discover turbo` outputs pure JSON to stdout. Pipe it to a file to save it. Human-readable advisory text goes to stderr.
+</Aside>
+
+---
+
+## devmux init
+
+Print a configuration template.
+
+```bash
+devmux init
+```
+
+### Output
+
+Prints a template `devmux.config.json` that you can customize:
+
+```json
+{
+  "project": "myapp",
+  "services": {
+    "api": {
+      "command": "pnpm dev",
+      "cwd": "./api",
+      "port": 8787
+    }
+  }
+}
+```
+
+---
+
+## devmux telemetry
+
+**Telemetry here means a local log bridge: a WebSocket server YOU run on YOUR machine. Nothing ever leaves your machine; there are no analytics and no phoning home.**
+
+<Aside type="caution">
+The `@chriscode/devmux-telemetry` client SDK is not yet published to npm. The server command (`devmux telemetry start`) is included in the main package.
+</Aside>
+
+```bash
+devmux telemetry start            # Start on default port 9876, binding 127.0.0.1
+devmux telemetry start --port 9876 --host 127.0.0.1
+devmux telemetry stop
+devmux telemetry status
+devmux telemetry status --json
+```
+
+| Option | Description |
+|--------|-------------|
+| `--port <number>` | Port to listen on (default: 9876) |
+| `--host <string>` | Host to bind (default: 127.0.0.1; use 0.0.0.0 only for physical device testing) |
+
+---
+
+## devmux dashboard
+
+Web dashboard for service monitoring. Binds to `127.0.0.1` by default.
+
+```bash
+devmux dashboard start            # Start on default port 9000
+devmux dashboard start --port 8080
+devmux dashboard start --no-open  # Don't auto-open browser
+devmux dashboard stop
+devmux dashboard status
+devmux dashboard status --json
+```
+
+---
+
+## devmux proxy
+
+Portless `.localhost` URL proxy. macOS only.
+
+```bash
+devmux proxy setup             # Print setup commands
+devmux proxy setup --apply     # Install Caddy + LaunchDaemon (requires sudo)
+devmux proxy setup --script    # Write a reusable shell script
+devmux proxy doctor            # Diagnose proxy readiness
+devmux proxy doctor --json
+devmux proxy start             # Start the managed proxy
+devmux proxy stop              # Stop the managed proxy
+devmux proxy status            # Show proxy status and routes
+devmux proxy routes            # List active hostname → port mappings
+devmux proxy teardown          # Print teardown commands
+devmux proxy teardown --apply  # Execute teardown (requires sudo)
+```
+
+---
+
+## devmux watch
+
+```bash
+devmux watch start [service]    # Start watching (omit service for all)
+devmux watch stop [service]     # Stop watching
+devmux watch status             # Show watcher status
+devmux watch status --json
+devmux watch queue              # Show pending errors
+devmux watch queue --json
+devmux watch queue --clear      # Clear the queue
+```
+
+---
+
+## devmux restart
+
+```bash
+devmux restart <service>
+devmux restart <service> --timeout 60  # Startup timeout in seconds
+devmux restart <service> --force       # Also kill processes on ports
+```
+
+---
+
+## devmux diagnose
+
+Diagnose port issues for a service.
+
+```bash
+devmux diagnose <service>
+devmux diagnose <service> --json
+```
+
+---
+
+## devmux ports
+
+Show configured ports for the current project.
+
+```bash
+devmux ports              # Human-readable table
+devmux ports --json       # JSON (for scripts/agents)
+devmux ports --plain      # Tab-separated lines for shell pipelines
+devmux ports --live       # Also probe whether ports are currently occupied
+```
+
+---
+
+## Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| 1 | General error |
+| 2 | Config not found or invalid |
+| 3 | Service not found |
+| 4 | Health check timeout |
+
+---
+
+## Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `DEVMUX_CONFIG` | Path to config file (default: `./devmux.config.json`) |
+| `DEVMUX_TIMEOUT` | Default health check timeout in ms |
+| `DEVMUX_DEBUG` | Enable debug logging (`1` or `true`) |

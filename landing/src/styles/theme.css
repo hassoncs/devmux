@@ -1,0 +1,140 @@
+:root {
+	/* Palette Definition - Green/Teal theme for devmux */
+	--devmux-bg-main: #0A0A0C;
+	--devmux-bg-sec: #121214;
+	--devmux-bg-ter: #1A1A1E;
+	
+	--devmux-accent-green: #10B981;
+	--devmux-accent-green-high: #6EE7B7;
+	--devmux-accent-green-low: #064E3B;
+	
+	--devmux-accent-cyan: #06B6D4;
+	--devmux-accent-teal: #14B8A6;
+	
+	--devmux-text-main: #F9FAFB;
+	--devmux-text-muted: #9CA3AF;
+
+	/* Starlight Overrides */
+	--sl-color-bg: var(--devmux-bg-main);
+	--sl-color-bg-nav: var(--devmux-bg-main);
+	--sl-color-bg-sidebar: var(--devmux-bg-sec);
+	--sl-color-bg-inline-code: var(--devmux-bg-ter);
+	--sl-color-bg-block-code: var(--devmux-bg-ter);
+
+	--sl-color-accent: var(--devmux-accent-green);
+	--sl-color-accent-high: var(--devmux-accent-green-high);
+	--sl-color-accent-low: var(--devmux-accent-green-low);
+
+	--sl-color-text: var(--devmux-text-main);
+	--sl-color-text-accent: var(--devmux-accent-green-high);
+	--sl-color-gray-1: #EEEEEE;
+	--sl-color-gray-2: var(--devmux-text-main);
+	--sl-color-gray-3: var(--devmux-text-muted);
+	--sl-color-gray-4: #6B7280;
+	--sl-color-gray-5: #4B5563;
+	--sl-color-gray-6: #374151;
+
+	--sl-color-hairline-light: rgba(255, 255, 255, 0.1);
+	--sl-color-hairline: rgba(255, 255, 255, 0.05);
+
+	/* Scrollbar */
+	--sl-color-scrollbar-thumb: var(--devmux-bg-ter);
+	--sl-color-scrollbar-track: var(--devmux-bg-main);
+}
+
+/* Light mode */
+[data-theme='light'] {
+	--sl-color-bg: #ffffff;
+	--sl-color-bg-nav: #fdfdfd;
+	--sl-color-bg-sidebar: #f6f6f7;
+	--sl-color-text: #111827;
+	--sl-color-accent: var(--devmux-accent-green);
+}
+
+/* Bioluminescent Glow in Hero */
+.hero {
+	position: relative;
+	overflow: hidden;
+}
+
+.hero::before {
+	content: '';
+	position: absolute;
+	top: -50%;
+	left: 50%;
+	transform: translateX(-50%);
+	width: 150%;
+	height: 150%;
+	background: 
+		radial-gradient(circle at 50% 50%, rgba(16, 185, 129, 0.08) 0%, transparent 40%),
+		radial-gradient(circle at 30% 60%, rgba(6, 182, 212, 0.05) 0%, transparent 35%);
+	z-index: -1;
+	pointer-events: none;
+	filter: blur(40px);
+}
+
+/* Global Transition for Smoothness */
+body, a, code, .card {
+	transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* Card Styling */
+.card {
+	background-color: var(--devmux-bg-ter);
+	border: 1px solid var(--sl-color-hairline-light);
+	border-radius: 0.75rem;
+	box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.card:hover {
+	border-color: var(--devmux-accent-green-low);
+	box-shadow: 0 0 15px rgba(16, 185, 129, 0.05);
+}
+
+/* Code Blocks */
+.expressive-code pre {
+	background-color: var(--devmux-bg-ter) !important;
+	border: 1px solid var(--sl-color-hairline) !important;
+	border-radius: 0.5rem;
+}
+
+/* Navbar Blur */
+.site-header {
+	background-color: rgba(10, 10, 12, 0.85);
+	backdrop-filter: blur(12px);
+	border-bottom: 1px solid var(--sl-color-hairline);
+}
+
+/* Typography Enhancements */
+h1, h2, h3, h4, h5, h6 {
+	letter-spacing: -0.015em;
+}
+
+h1 {
+	background: linear-gradient(to right, #F9FAFB, #6EE7B7);
+	-webkit-background-clip: text;
+	-webkit-text-fill-color: transparent;
+	text-shadow: 0 0 30px rgba(110, 231, 183, 0.1);
+}
+
+/* Button / Link Enhancements */
+.action {
+	background: var(--devmux-accent-green) !important;
+	border: 1px solid rgba(255,255,255,0.1) !important;
+	box-shadow: 0 0 10px rgba(16, 185, 129, 0.3);
+}
+
+.action:hover {
+	box-shadow: 0 0 20px rgba(16, 185, 129, 0.5);
+	transform: translateY(-1px);
+}
+
+.action.secondary {
+	background: transparent !important;
+	border: 1px solid var(--sl-color-hairline-light) !important;
+}
+
+.action.secondary:hover {
+	border-color: var(--devmux-text-muted) !important;
+	background: rgba(255,255,255,0.03) !important;
+}

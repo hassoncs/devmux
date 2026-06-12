@@ -1,0 +1,124 @@
+# devmux - AI Agent Instructions
+
+> tmux-based service management for monorepos with human-AI shared awareness
+
+## What is devmux?
+
+devmux is a CLI tool that manages dev servers through tmux sessions using a 
+consistent naming convention. Both humans and AI agents can start, stop, and 
+reuse the same services without conflicts.
+
+## Why it exists
+
+When AI coding assistants work on projects, they often need to start dev servers.
+Without coordination:
+- Port conflicts when both human and agent try to start the same service
+- Duplicate processes wasting resources
+- No cleanup after agent sessions end
+- Neither side knows what the other started
+
+devmux solves this through shared tmux session naming: `omo-{project}-{service}`
+
+## Installation
+
+```bash
+npm install -D @chriscode/devmux
+# or
+pnpm add -D @chriscode/devmux
+```
+
+## Configuration
+
+Create `devmux.config.json` in your project root:
+
+```json
+{
+  "project": "myapp",
+  "services": {
+    "api": {
+      "command": "pnpm dev",
+      "cwd": "./api",
+      "port": 8787
+    },
+    "web": {
+      "command": "pnpm dev",
+      "cwd": "./web", 
+      "port": 3000
+    }
+  }
+}
+```
+
+## Commands
+
+### Check status (ALWAYS do this first)
+```bash
+devmux status
+```
+
+### Start a service (idempotent - safe to run multiple times)
+```bash
+devmux ensure api
+```
+
+### Stop a service
+```bash
+devmux stop api
+devmux stop all
+```
+
+### View logs
+```bash
+devmux attach api
+```
+
+### Run command with services
+```bash
+devmux run --with api -- npm test
+```
+
+## For AI Agents - Critical Instructions
+
+1. **ALWAYS check status before starting services**
+   ```bash
+   devmux status
+   ```
+
+2. **Use `devmux ensure` instead of raw commands**
+   - GOOD: `devmux ensure api`
+   - BAD: `pnpm dev` or `npm run dev`
+
+3. **The `ensure` command is idempotent**
+   - If service is running: reuses it
+   - If service is stopped: starts it
+   - Safe to call multiple times
+
+4. **tmux session naming convention**
+   Sessions are named `omo-{project}-{service}`, e.g., `omo-myapp-api`
+
+5. **If using tmux directly**
+   ```bash
+   tmux new-session -d -s omo-myapp-api -c api "pnpm dev"
+   ```
+   Use EXACTLY this naming pattern.
+
+## Programmatic API
+
+```typescript
+import { ensureService, getStatus, stopService } from '@chriscode/devmux';
+
+// Check if running
+const status = await getStatus('api');
+
+// Start if needed (idempotent)
+await ensureService('api');
+
+// Stop when done
+await stopService('api');
+```
+
+## Documentation
+
+Full documentation: https://devmux-landing.pages.dev
+GitHub: https://github.com/hassoncs/devmux
+npm: https://www.npmjs.com/package/@chriscode/devmux

@@ -1,0 +1,156 @@
+---
+title: Turbo.json Discovery
+description: Automatically generate devmux config from your Turborepo setup.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+If you use [Turborepo](https://turbo.build/repo), devmux can automatically discover your services from `turbo.json`.
+
+## Quick Start
+
+```bash
+devmux discover turbo
+```
+
+This reads your `turbo.json` and generates a `devmux.config.json`.
+
+## How It Works
+
+devmux looks for:
+
+1. Tasks named `dev` in your `turbo.json`
+2. Packages that have those tasks defined
+3. Port configurations from package.json scripts
+
+### Example
+
+Given this `turbo.json`:
+
+```json
+{
+  "$schema": "https://turbo.build/schema.json",
+  "tasks": {
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    }
+  }
+}
+```
+
+And these packages:
+- `apps/api` with `"dev": "wrangler dev --port 8787"`
+- `apps/web` with `"dev": "next dev --port 3000"`
+
+Running `devmux discover turbo` generates:
+
+```json
+{
+  "project": "myapp",
+  "services": {
+    "api": {
+      "command": "pnpm dev",
+      "cwd": "./apps/api",
+      "port": 8787
+    },
+    "web": {
+      "command": "pnpm dev",
+      "cwd": "./apps/web",
+      "port": 3000
+    }
+  }
+}
+```
+
+## Port Detection
+
+devmux tries to detect ports from your package.json scripts:
+
+| Pattern | Detected Port |
+|---------|---------------|
+| `--port 3000` | 3000 |
+| `-p 8080` | 8080 |
+| `:3000` | 3000 |
+| `PORT=4000` | 4000 |
+
+If no port is detected, the service is still added but without a port health check.
+
+## Customizing Discovery
+
+The `devmux discover turbo` command outputs JSON to stdout. Redirect it to save:
+
+```bash
+devmux discover turbo > devmux.config.json
+```
+
+Advisory messages (like "edit to add health checks") are printed to stderr so they don't corrupt the JSON output.
+
+## After Discovery
+
+<Steps>
+
+1. **Review the generated config**
+
+   Open `devmux.config.json` and verify:
+   - Service names make sense
+   - Ports are correct
+   - Paths are correct
+
+2. **Add health checks and missing ports**
+
+   Discovery can detect ports from scripts but won't know how to health-check them. Add `health` manually:
+
+   ```json
+   {
+     "worker": {
+       "cwd": "./apps/worker",
+       "command": "pnpm dev",
+       "health": { "type": "port", "port": 9000 }
+     }
+   }
+   ```
+
+3. **Test it**
+
+   ```bash
+   devmux ensure api
+   devmux status
+   ```
+
+</Steps>
+
+## Limitations
+
+<Aside type="caution">
+Discovery works best when:
+- Your `turbo.json` has a `dev` task
+- Package.json scripts include port numbers
+- Your monorepo uses a standard structure
+</Aside>
+
+For complex setups, you may need to manually adjust the generated config.
+
+## Re-running Discovery
+
+`devmux discover turbo` outputs to stdout, so re-running it always produces fresh output. Redirect to overwrite your config:
+
+```bash
+devmux discover turbo > devmux.config.json
+```
+
+Review the result before overwriting a file you've customized — discovery only sees what's in `turbo.json` and package.json scripts; it won't preserve health checks or `dependsOn` you've added manually.
+
+## Workspace Detection
+
+devmux auto-detects your workspace root by looking for:
+
+1. `turbo.json`
+2. `pnpm-workspace.yaml`
+3. `package.json` with `workspaces` field
+
+The project name is inferred from your root `package.json` name.
