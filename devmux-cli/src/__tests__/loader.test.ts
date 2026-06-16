@@ -1,8 +1,8 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
-import { loadConfigExact } from "../config/loader.js";
+import { loadConfig, loadConfigExact } from "../config/loader.js";
 
 const tempDirs: string[] = [];
 
@@ -22,6 +22,48 @@ function writeConfig(config: unknown): string {
   );
   return dir;
 }
+
+describe("loadConfig (walk-up discovery)", () => {
+  it("finds devmux.config.json when invoked from a nested subdirectory", () => {
+    // Regression: stale dist only checked the start dir; correct source walks
+    // up to filesystem root. This test exercises the exact palot failure case:
+    // `devmux ensure <svc>` run from apps/desktop/ could not find the root config.
+    const root = mkdtempSync(join(tmpdir(), "devmux-walkup-"));
+    tempDirs.push(root);
+
+    writeFileSync(
+      join(root, "devmux.config.json"),
+      JSON.stringify(
+        {
+          version: 1,
+          project: "walkup-test",
+          services: {
+            api: { command: "node server.js" },
+          },
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+
+    const subDir = join(root, "apps", "desktop");
+    mkdirSync(subDir, { recursive: true });
+
+    const config = loadConfig(subDir);
+    expect(config.project).toBe("walkup-test");
+    expect(config.configRoot).toBe(root);
+  });
+
+  it("throws a helpful error when no config exists anywhere in the tree", () => {
+    const isolated = mkdtempSync(join(tmpdir(), "devmux-noconfig-"));
+    tempDirs.push(isolated);
+    const subDir = join(isolated, "deep", "nested");
+    mkdirSync(subDir, { recursive: true });
+
+    expect(() => loadConfig(subDir)).toThrow("No devmux config found");
+  });
+});
 
 describe("loadConfigExact", () => {
   it("rejects non-localhost proxy hostname patterns", () => {
