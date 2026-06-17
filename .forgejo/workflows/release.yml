@@ -21,7 +21,9 @@ jobs:
           node-version: '24'
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v5
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.0.0 --activate
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -39,16 +41,11 @@ jobs:
     needs: ci
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      id-token: write
-
     steps:
       - name: Checkout
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -56,7 +53,9 @@ jobs:
           node-version: '24'
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v5
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.0.0 --activate
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -67,18 +66,18 @@ jobs:
       - name: Calculate version bump
         id: version
         run: |
-          # Get current npm version
+          # Public distribution exception: devmux is intentionally published to public npm.
+          # CH5-owned private packages should publish to HQ/Verdaccio instead.
+          OUTPUT_FILE="${FORGEJO_OUTPUT:-$GITHUB_OUTPUT}"
+
           CURRENT_NPM_VERSION=$(npm view @chriscode/devmux version 2>/dev/null || echo "0.0.0")
-          echo "current_npm_version=$CURRENT_NPM_VERSION" >> $GITHUB_OUTPUT
+          echo "current_npm_version=$CURRENT_NPM_VERSION" >> "$OUTPUT_FILE"
 
-          # Get current package.json version
           PACKAGE_VERSION=$(node -p "require('./devmux-cli/package.json').version")
-          echo "package_version=$PACKAGE_VERSION" >> $GITHUB_OUTPUT
+          echo "package_version=$PACKAGE_VERSION" >> "$OUTPUT_FILE"
 
-          # Find the tag for the current npm version
           LAST_TAG="v$CURRENT_NPM_VERSION"
 
-          # Check if tag exists, if not use all commits
           if git rev-parse "$LAST_TAG" >/dev/null 2>&1; then
             COMMITS=$(git log "$LAST_TAG"..HEAD --pretty=format:"%s" 2>/dev/null || echo "")
           else
@@ -89,7 +88,6 @@ jobs:
           echo "Commits since $LAST_TAG:"
           echo "$COMMITS"
 
-          # Determine bump type from conventional commits
           BUMP="none"
 
           if echo "$COMMITS" | grep -qE "^[a-z]+(\(.+\))?!:"; then
@@ -100,14 +98,13 @@ jobs:
             BUMP="patch"
           fi
 
-          echo "bump=$BUMP" >> $GITHUB_OUTPUT
+          echo "bump=$BUMP" >> "$OUTPUT_FILE"
 
           if [ "$BUMP" = "none" ]; then
             echo "No conventional commits found, skipping release"
-            echo "new_version=$CURRENT_NPM_VERSION" >> $GITHUB_OUTPUT
-            echo "should_release=false" >> $GITHUB_OUTPUT
+            echo "new_version=$CURRENT_NPM_VERSION" >> "$OUTPUT_FILE"
+            echo "should_release=false" >> "$OUTPUT_FILE"
           else
-            # Calculate new version
             IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_NPM_VERSION"
 
             case "$BUMP" in
@@ -122,23 +119,34 @@ jobs:
                 ;;
             esac
 
-            echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
-            echo "should_release=true" >> $GITHUB_OUTPUT
+            echo "new_version=$NEW_VERSION" >> "$OUTPUT_FILE"
+            echo "should_release=true" >> "$OUTPUT_FILE"
             echo "Calculated new version: $NEW_VERSION ($BUMP bump)"
           fi
 
       - name: Check if version already published
         id: check_published
         run: |
+          OUTPUT_FILE="${FORGEJO_OUTPUT:-$GITHUB_OUTPUT}"
           NEW_VERSION="${{ steps.version.outputs.new_version }}"
 
           if npm view "@chriscode/devmux@$NEW_VERSION" version >/dev/null 2>&1; then
             echo "Version $NEW_VERSION already published, skipping"
-            echo "already_published=true" >> $GITHUB_OUTPUT
+            echo "already_published=true" >> "$OUTPUT_FILE"
           else
             echo "Version $NEW_VERSION not yet published"
-            echo "already_published=false" >> $GITHUB_OUTPUT
+            echo "already_published=false" >> "$OUTPUT_FILE"
           fi
+
+      - name: Validate release secrets
+        if: steps.version.outputs.should_release == 'true' && steps.check_published.outputs.already_published == 'false'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          : "${NODE_AUTH_TOKEN:?NPM_TOKEN secret is required for public npm publish}"
+          : "${FORGEJO_TOKEN:?FORGEJO_TOKEN is required for git push and release creation}"
+          : "${FORGEJO_API_URL:?FORGEJO_API_URL is required for release creation}"
+          : "${FORGEJO_REPOSITORY:?FORGEJO_REPOSITORY is required for release creation}"
 
       - name: Update package.json version
         if: steps.version.outputs.should_release == 'true' && steps.check_published.outputs.already_published == 'false'
@@ -154,43 +162,46 @@ jobs:
             echo "Updated package.json to version $NEW_VERSION"
           fi
 
-      - name: Publish to npm (trusted publishing)
+      - name: Publish to npm
         if: steps.version.outputs.should_release == 'true' && steps.check_published.outputs.already_published == 'false'
-        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_REGISTRY: https://registry.npmjs.org/
+        run: |
+          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
+            echo "NPM_TOKEN secret is required for public npm publish" >&2
+            exit 1
+          fi
+
+          npm publish --access public
         working-directory: devmux-cli
 
-      - name: Create git tag
+      - name: Commit version and tag
         if: steps.version.outputs.should_release == 'true' && steps.check_published.outputs.already_published == 'false'
         run: |
           NEW_VERSION="${{ steps.version.outputs.new_version }}"
           TAG="v$NEW_VERSION"
 
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "forgejo-actions[bot]"
+          git config user.email "forgejo-actions[bot]@ch5.me"
 
-          # Commit the version bump if there are changes
           git add devmux-cli/package.json
           git commit -m "chore(release): $NEW_VERSION [skip ci]" || echo "No changes to commit"
-
-          # Create tag
           git tag "$TAG" || echo "Tag already exists"
 
-          # Push commit and tag
-          git push origin main || echo "No commits to push"
-          git push origin "$TAG"
+          git -c http.extraHeader="Authorization: token $FORGEJO_TOKEN" push origin HEAD:main || echo "No commits to push"
+          git -c http.extraHeader="Authorization: token $FORGEJO_TOKEN" push origin "$TAG"
 
           echo "Created and pushed tag $TAG"
 
-      - name: Create GitHub Release
+      - name: Create Forgejo release
         if: steps.version.outputs.should_release == 'true' && steps.check_published.outputs.already_published == 'false'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEW_VERSION: ${{ steps.version.outputs.new_version }}
+          CURRENT_NPM_VERSION: ${{ steps.version.outputs.current_npm_version }}
         run: |
-          NEW_VERSION="${{ steps.version.outputs.new_version }}"
           TAG="v$NEW_VERSION"
-
-          # Generate release notes from commits
-          LAST_TAG="v${{ steps.version.outputs.current_npm_version }}"
+          LAST_TAG="v$CURRENT_NPM_VERSION"
 
           if git rev-parse "$LAST_TAG" >/dev/null 2>&1; then
             NOTES=$(git log "$LAST_TAG"..HEAD~1 --pretty=format:"- %s" 2>/dev/null || echo "- Initial release")
@@ -198,7 +209,34 @@ jobs:
             NOTES="- Initial release"
           fi
 
-          gh release create "$TAG" \
-            --title "$TAG" \
-            --notes "$NOTES" \
-            --latest
+          RELEASE_PAYLOAD=$(TAG="$TAG" NOTES="$NOTES" node <<'NODE'
+          const payload = {
+            tag_name: process.env.TAG,
+            target_commitish: 'main',
+            name: process.env.TAG,
+            body: process.env.NOTES,
+            draft: false,
+            prerelease: false
+          };
+          process.stdout.write(JSON.stringify(payload));
+          NODE
+          )
+
+          status=$(curl -sS -o /tmp/forgejo-release.json -w "%{http_code}" \
+            -X POST "$FORGEJO_API_URL/repos/$FORGEJO_REPOSITORY/releases" \
+            -H "Authorization: token $FORGEJO_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data "$RELEASE_PAYLOAD")
+
+          case "$status" in
+            200|201)
+              echo "Created Forgejo release $TAG"
+              ;;
+            409)
+              echo "Forgejo release $TAG already exists"
+              ;;
+            *)
+              cat /tmp/forgejo-release.json >&2
+              exit 1
+              ;;
+          esac
