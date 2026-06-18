@@ -3,6 +3,20 @@ import { execSync } from "node:child_process";
 import type { HealthCheckType } from "../config/types.js";
 
 export function checkPort(port: number, host: string = "localhost"): Promise<boolean> {
+  if (host === "localhost") {
+    return checkAnyPortHost(port, ["127.0.0.1", "::1"]);
+  }
+
+  return checkSinglePortHost(port, host);
+}
+
+function checkAnyPortHost(port: number, hosts: string[]): Promise<boolean> {
+  return Promise.all(hosts.map((host) => checkSinglePortHost(port, host))).then(
+    (results) => results.some(Boolean)
+  );
+}
+
+function checkSinglePortHost(port: number, host: string): Promise<boolean> {
   return new Promise((resolve) => {
     const socket = createConnection({ port, host });
     socket.setTimeout(1000);
